@@ -3,6 +3,9 @@
 .env.local
 .env.production
 
+# Generated config (contains injected secrets from .env)
+config/openclaw.json
+
 # OpenClaw runtime artifacts
 credentials/
 sessions/

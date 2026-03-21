@@ -47,14 +47,26 @@ fi
 mkdir -p "$OPENCLAW_DIR"
 mkdir -p "$CRON_DIR"
 
-# --- Symlink config ---
-if [ -e "$OPENCLAW_DIR/openclaw.json" ] && [ ! -L "$OPENCLAW_DIR/openclaw.json" ]; then
-    BACKUP="$OPENCLAW_DIR/openclaw.json.backup.$(date +%s)"
-    echo "Backing up existing config to $BACKUP"
-    mv "$OPENCLAW_DIR/openclaw.json" "$BACKUP"
+# --- Generate config from template (secrets injected from .env) ---
+TEMPLATE="$REPO_DIR/config/openclaw.json.template"
+TARGET_CONFIG="$OPENCLAW_DIR/openclaw.json"
+if [ ! -f "$TEMPLATE" ]; then
+    echo "ERROR: config/openclaw.json.template not found"
+    exit 1
 fi
-ln -sfn "$REPO_DIR/config/openclaw.json" "$OPENCLAW_DIR/openclaw.json"
-echo "Linked: config/openclaw.json -> $OPENCLAW_DIR/openclaw.json"
+if [ -e "$TARGET_CONFIG" ]; then
+    BACKUP="$TARGET_CONFIG.backup.$(date +%s)"
+    echo "Backing up existing config to $BACKUP"
+    cp "$TARGET_CONFIG" "$BACKUP"
+fi
+cp "$TEMPLATE" "$TARGET_CONFIG"
+if [ -n "${OPENCLAW_AUTH_TOKEN:-}" ]; then
+    sed -i '' "s|__OPENCLAW_AUTH_TOKEN__|$OPENCLAW_AUTH_TOKEN|g" "$TARGET_CONFIG"
+    echo "Generated: openclaw.json (token injected from .env)"
+else
+    echo "WARNING: OPENCLAW_AUTH_TOKEN not set in .env — token placeholder left in config"
+fi
+chmod 600 "$TARGET_CONFIG"
 
 # --- Symlink workspace ---
 if [ -e "$WORKSPACE_DIR" ] && [ ! -L "$WORKSPACE_DIR" ]; then
@@ -90,14 +102,16 @@ else
     openclaw gateway install
 fi
 
-# --- Re-establish symlink (gateway install may break it) ---
-if [ ! -L "$OPENCLAW_DIR/openclaw.json" ]; then
-    echo "Re-establishing config symlink (gateway install created a regular file)..."
-    if [ -f "$OPENCLAW_DIR/openclaw.json" ]; then
-        mv "$OPENCLAW_DIR/openclaw.json" "$OPENCLAW_DIR/openclaw.json.gateway-generated"
+# --- Re-inject config if gateway install overwrote it ---
+if [ -f "$OPENCLAW_DIR/openclaw.json" ]; then
+    if ! grep -q "$OPENCLAW_AUTH_TOKEN" "$OPENCLAW_DIR/openclaw.json" 2>/dev/null; then
+        echo "Re-injecting config (gateway install may have overwritten it)..."
+        cp "$TEMPLATE" "$TARGET_CONFIG"
+        if [ -n "${OPENCLAW_AUTH_TOKEN:-}" ]; then
+            sed -i '' "s|__OPENCLAW_AUTH_TOKEN__|$OPENCLAW_AUTH_TOKEN|g" "$TARGET_CONFIG"
+        fi
+        chmod 600 "$TARGET_CONFIG"
     fi
-    ln -sfn "$REPO_DIR/config/openclaw.json" "$OPENCLAW_DIR/openclaw.json"
-    echo "Linked: config/openclaw.json -> $OPENCLAW_DIR/openclaw.json"
 fi
 
 # --- Inject API keys into LaunchAgent plist ---

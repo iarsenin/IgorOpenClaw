@@ -1,6 +1,7 @@
 {
   // OpenClaw Configuration — IgorOpenClaw
   // After editing, restart the gateway: openclaw gateway restart
+  // Token is injected from .env by setup.sh — DO NOT hardcode secrets here.
 
   meta: {
     lastTouchedVersion: "2026.3.13",
@@ -58,7 +59,7 @@
     mode: "local",
     auth: {
       mode: "token",
-      token: "***TOKEN_REMOVED***",
+      token: "__OPENCLAW_AUTH_TOKEN__",
     },
   },
 }
