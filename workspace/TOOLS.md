@@ -65,14 +65,46 @@
 - STATUS: flagged suspicious by VirusTotal — review source code before installing
 - Install: `npx clawhub install browser-automation --force` (only after review)
 
-## Email Access
+## Email Access — himalaya (IMAP/SMTP)
 
-**DO NOT use the browser tool for Gmail.** The browser bridge is unreliable.
-Use IMAP/SMTP instead — credentials are available as environment variables:
-- `GMAIL_USER` — Gmail address
-- `GMAIL_APP_PASSWORD` — Gmail app-specific password
-Use shell commands with `curl` or the `gog` CLI to access email.
-If `gog` is not installed, use Python's `imaplib`/`smtplib` via a shell one-liner.
+**DO NOT use the browser tool for email.** Use the `himalaya` CLI instead.
+
+Igor has TWO email accounts. When he says "check my email" (without specifying),
+**always check BOTH accounts** and present a single combined summary, grouped by
+account. When replying or following up on a specific email, use the correct account.
+
+### Accounts
+
+| Account | Command flag | Address |
+|---------|-------------|---------|
+| Gmail (default) | `--account gmail` or omit | igor.arsenin@gmail.com |
+| Yahoo | `--account yahoo` | arsenin@yahoo.com |
+
+### Common commands
+
+```bash
+# List recent emails — BOTH accounts
+himalaya envelope list --account gmail --page-size 10
+himalaya envelope list --account yahoo --page-size 10
+
+# Read a specific email
+himalaya message read --account gmail <ID>
+himalaya message read --account yahoo <ID>
+
+# Search
+himalaya envelope list --account gmail --query "from:someone@example.com"
+
+# Reply (ALWAYS draft first, show user, send only after approval)
+himalaya message reply --account gmail <ID>
+himalaya message reply --account yahoo <ID>
+```
+
+### Rules
+- "Check my email" = check BOTH accounts, aggregate results
+- "Check my Gmail" = only Gmail
+- "Check my Yahoo" = only Yahoo
+- When replying, use the account that received the original email
+- NEVER send without showing the draft to the user first
 
 ## Browser Tool Limitations
 
