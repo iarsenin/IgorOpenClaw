@@ -38,7 +38,7 @@
     whatsapp: {
       enabled: true,
       dmPolicy: "allowlist",
-      allowFrom: ["+19179752041"],
+      allowFrom: ["+19179752041", "+19176997436"],
       groupPolicy: "disabled",
       groups: {},
       debounceMs: 0,

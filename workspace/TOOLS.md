@@ -81,6 +81,25 @@ The built-in browser tool requires Chrome with remote debugging. It is fragile.
 unnecessary complexity. For web tasks, prefer `search_web` or `curl`. If you
 truly need browser automation, use the `browser-automation` Playwright skill.
 
+## WhatsApp Messaging — CRITICAL FORMAT
+
+When sending WhatsApp messages via the `send_message` tool, the `target` MUST be in
+**E.164 format** — that means the full phone number WITH the `+` prefix.
+
+Examples of CORRECT targets:
+- `+19176997436`
+- `+19179752041`
+
+Examples of WRONG targets (will fail with "requires target <E.164|group JID>"):
+- `19176997436` (missing `+`)
+- `Arturas Vaitaitis` (name, not a number)
+- `@arturas` (not a phone number)
+
+For group messages, use the WhatsApp group JID (e.g. `120363012345@g.us`).
+
+If a user asks you to message someone by name, ask for their phone number first.
+You CANNOT browse the WhatsApp chat list or contacts — this is a bridge limitation.
+
 ## Built-in Tools
 
 - execute_shell — run shell commands (safety: medium)
