@@ -1,0 +1,22 @@
+# Secrets — NEVER commit
+.env
+.env.local
+.env.production
+
+# OpenClaw runtime artifacts
+credentials/
+sessions/
+*.session
+*.session.json
+
+# Node
+node_modules/
+
+# macOS
+.DS_Store
+*.swp
+*~
+
+# Logs
+logs/
+*.log

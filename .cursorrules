@@ -1,0 +1,56 @@
+# Cursor Agent Rules — IgorOpenClaw
+
+## What this repo is
+
+This is NOT a software application. It is the **configuration and workspace
+repository** for an OpenClaw autonomous AI agent running on a Mac Mini M2
+(Apple Silicon, 8 GB RAM, macOS).
+
+OpenClaw is installed globally via npm (`npm install -g openclaw`). This repo
+contains:
+
+- `config/openclaw.json` — the main OpenClaw configuration (symlinked into
+  `~/.openclaw/openclaw.json` by `scripts/setup.sh`)
+- `workspace/` — OpenClaw agent workspace files (AGENTS.md, SOUL.md, etc.),
+  symlinked into `~/.openclaw/workspace/`
+- `scripts/` — setup and teardown helpers
+- `SETUP_GUIDE.md` — full installation walkthrough
+
+## Critical rules
+
+1. **Never commit secrets.** All API keys live in `.env` (git-ignored). Config
+   files reference them via environment variable names only.
+2. **Never hardcode API keys, tokens, or passwords** in any file that gets
+   committed.
+3. **After editing `config/openclaw.json`**, the OpenClaw gateway must be
+   restarted: `openclaw gateway restart`.
+4. **After editing any `workspace/*.md` file**, changes take effect on the
+   agent's next turn (no restart needed).
+5. **SETUP_GUIDE.md is a standalone doc** meant to be pasted into a Gemini
+   session. Keep it self-contained with full commands and context.
+
+## File layout
+
+- `config/openclaw.json` — multi-model config (OpenAI primary, Gemini fallback),
+  WhatsApp channel, security settings
+- `config/cron/jobs.json` — scheduled/heartbeat job definitions
+- `workspace/AGENTS.md` — operational rules and task routing
+- `workspace/SOUL.md` — agent personality and tone
+- `workspace/USER.md` — user context (timezone, preferences)
+- `workspace/TOOLS.md` — available tools and environment notes
+- `workspace/MEMORY.md` — agent-maintained learned patterns
+- `workspace/HEARTBEAT.md` — proactive scheduled task definitions
+- `.env.example` — template for required environment variables
+
+## Testing changes
+
+```bash
+# Restart gateway after config changes
+openclaw gateway restart
+
+# Check gateway health
+openclaw gateway status
+
+# View recent logs
+openclaw logs --tail 50
+```

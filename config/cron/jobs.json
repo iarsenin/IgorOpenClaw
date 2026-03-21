@@ -1,0 +1,47 @@
+{
+  "version": 1,
+  "jobs": [
+    {
+      "id": "morning-briefing",
+      "name": "Morning Briefing",
+      "description": "Daily morning summary of emails, tasks, and overnight events",
+      "schedule": {
+        "kind": "cron",
+        "expr": "30 7 * * *"
+      },
+      "timezone": "America/New_York",
+      "enabled": true,
+      "sessionTarget": "isolated",
+      "wakeMode": "now",
+      "prompt": "Run the morning briefing: summarize unread emails, list today's scheduled tasks, and report any overnight errors. Send the summary to me via WhatsApp."
+    },
+    {
+      "id": "email-triage",
+      "name": "Email Triage",
+      "description": "Periodic email inbox check and triage",
+      "schedule": {
+        "kind": "cron",
+        "expr": "0 8,10,12,14,16,18,20,22 * * *"
+      },
+      "timezone": "America/New_York",
+      "enabled": true,
+      "sessionTarget": "isolated",
+      "wakeMode": "now",
+      "prompt": "Check my email inbox for new messages. Flag anything urgent and draft replies for routine messages. Only notify me if there's something that needs my attention."
+    },
+    {
+      "id": "system-health",
+      "name": "System Health",
+      "description": "Periodic system and gateway health check",
+      "schedule": {
+        "kind": "cron",
+        "expr": "0 */6 * * *"
+      },
+      "timezone": "America/New_York",
+      "enabled": true,
+      "sessionTarget": "isolated",
+      "wakeMode": "now",
+      "prompt": "Run a system health check: verify gateway status, check disk space, review recent error logs. Only notify me if something is wrong."
+    }
+  ]
+}
