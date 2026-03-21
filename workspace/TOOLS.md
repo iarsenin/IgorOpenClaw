@@ -65,6 +65,22 @@
 - STATUS: flagged suspicious by VirusTotal — review source code before installing
 - Install: `npx clawhub install browser-automation --force` (only after review)
 
+## Email Access
+
+**DO NOT use the browser tool for Gmail.** The browser bridge is unreliable.
+Use IMAP/SMTP instead — credentials are available as environment variables:
+- `GMAIL_USER` — Gmail address
+- `GMAIL_APP_PASSWORD` — Gmail app-specific password
+Use shell commands with `curl` or the `gog` CLI to access email.
+If `gog` is not installed, use Python's `imaplib`/`smtplib` via a shell one-liner.
+
+## Browser Tool Limitations
+
+The built-in browser tool requires Chrome with remote debugging. It is fragile.
+**Do NOT suggest the Browser Relay extension** — it is not installed and adds
+unnecessary complexity. For web tasks, prefer `search_web` or `curl`. If you
+truly need browser automation, use the `browser-automation` Playwright skill.
+
 ## Built-in Tools
 
 - execute_shell — run shell commands (safety: medium)

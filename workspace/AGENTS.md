@@ -5,7 +5,7 @@
 | Task Type | Primary Skill | Fallback |
 |-----------|--------------|----------|
 | Web browsing / form filling | browser-automation | manual instructions to user |
-| Email (read/send/triage) | gmail | send-email (SMTP) |
+| Email (read/send/triage) | IMAP/SMTP (via GMAIL_USER env var) | gog CLI |
 | Coding / IDE work | cursor-ide-agent | shell (git, npm, etc.) |
 | File management | built-in (read_file, write_file) | shell |
 | Scheduling / reminders | cron | heartbeat |
