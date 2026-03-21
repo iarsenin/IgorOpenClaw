@@ -9,8 +9,9 @@ repository** for an OpenClaw autonomous AI agent running on a Mac Mini M2
 OpenClaw is installed globally via npm (`npm install -g openclaw`). This repo
 contains:
 
-- `config/openclaw.json` — the main OpenClaw configuration (symlinked into
-  `~/.openclaw/openclaw.json` by `scripts/setup.sh`)
+- `config/openclaw.json.template` — the main OpenClaw configuration template
+  (secrets are injected from `.env` by `scripts/setup.sh` into
+  `~/.openclaw/openclaw.json` — the generated file is git-ignored)
 - `workspace/` — OpenClaw agent workspace files (AGENTS.md, SOUL.md, etc.),
   symlinked into `~/.openclaw/workspace/`
 - `scripts/` — setup and teardown helpers
@@ -31,8 +32,9 @@ contains:
 
 ## File layout
 
-- `config/openclaw.json` — multi-model config (OpenAI primary, Gemini fallback),
-  WhatsApp channel, security settings
+- `config/openclaw.json.template` — multi-model config template (OpenAI primary,
+  Gemini fallback), WhatsApp channel, security settings. Auth token placeholder
+  `__OPENCLAW_AUTH_TOKEN__` is injected from `.env` at setup time.
 - `config/cron/jobs.json` — scheduled/heartbeat job definitions
 - `workspace/AGENTS.md` — operational rules and task routing
 - `workspace/SOUL.md` — agent personality and tone
@@ -86,13 +88,20 @@ Keep this section updated after every change session.
 
 - **Primary model:** openai/gpt-5.4
 - **Fallback model:** google/gemini-2.5-pro
-- **WhatsApp:** allowlist-only (owner +19179752041), groups disabled
-- **Gateway:** localhost:18789, token auth
+- **WhatsApp:** allowlist-only (owner +19179752041, +19176997436), groups disabled
+- **Gateway:** localhost:18789, token auth (token injected from .env via template)
 - **Browser:** dedicated Chrome debug profile at ~/.openclaw/chrome-profile/ (port 9222)
 - **Daily restart:** 4 AM ET via launchd (ai.openclaw.daily-restart), restarts
   Chrome debug profile + gateway
 - **Cron jobs:** morning briefing (7:30 AM), email triage (every 2h 8AM-10PM),
   system health (every 6h)
-- **Skills installed:** browser-automation, screenshot (ClawHub); coding-agent,
-  gemini, github, peekaboo, summarize (bundled)
+- **Skills installed (17 ready):**
+  - ClawHub: browser-automation, screenshot
+  - Bundled: coding-agent, gemini, github, gh-issues, peekaboo, summarize,
+    healthcheck, openai-image-gen, openai-whisper-api, weather, skill-creator,
+    node-connect
+  - Newly added: gog (Google Workspace), himalaya (email IMAP/SMTP),
+    apple-reminders (remindctl)
+- **Email:** himalaya CLI (IMAP/SMTP with Gmail app password) + gog gmail (OAuth)
+- **Calendar/Drive/Contacts:** gog CLI (OAuth, project polar-city-407401)
 - **GitHub:** https://github.com/iarsenin/IgorOpenClaw (private)

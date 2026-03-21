@@ -35,7 +35,8 @@ The agent acts on its owner's behalf — browsing the web, managing email, runni
 - **Mac Mini M2** (8 GB RAM, Apple Silicon) — runs the agent natively
 - **OpenClaw Gateway** — always-on daemon managed by launchd
 - **LLMs via API** — no local models (hardware too constrained); OpenAI as primary, Gemini as fallback
-- **Skills** — browser automation (Playwright), Gmail, Cursor IDE agent
+- **Skills (17 ready)** — browser automation, Gmail/Calendar/Drive (gog OAuth),
+  email triage (himalaya IMAP), Apple Reminders, GitHub, coding-agent, and more
 
 ## Repository Layout
 
@@ -47,7 +48,7 @@ IgorOpenClaw/
 ├── .env.example           ← Template for secrets (copy to .env, never commit .env)
 ├── .gitignore
 ├── config/
-│   ├── openclaw.json      ← Main OpenClaw configuration (symlinked to ~/.openclaw/)
+│   ├── openclaw.json.template ← Config template (token injected from .env by setup.sh)
 │   └── cron/
 │       └── jobs.json      ← Scheduled task definitions
 ├── workspace/             ← OpenClaw agent workspace files (symlinked to ~/.openclaw/workspace/)
@@ -88,7 +89,7 @@ For the full step-by-step walkthrough, see [SETUP_GUIDE.md](SETUP_GUIDE.md).
 
 ## Configuration
 
-All configuration is in `config/openclaw.json`. It references secrets via environment variables — no keys are hardcoded. After editing, restart the gateway:
+Configuration lives in `config/openclaw.json.template`. The auth token uses a `__OPENCLAW_AUTH_TOKEN__` placeholder — `scripts/setup.sh` copies the template to `~/.openclaw/openclaw.json` and injects the real token from `.env`. After editing the template, re-run setup and restart:
 
 ```bash
 openclaw gateway restart
@@ -99,7 +100,8 @@ Agent workspace files (`workspace/*.md`) take effect on the next agent turn with
 ## Security
 
 - Gateway binds to `127.0.0.1` only (never exposed to the network)
-- Authentication token required for all gateway access
+- Authentication token required for all gateway access (injected from `.env`, never committed)
+- Config uses a template system — `config/openclaw.json.template` has a placeholder; real token is injected at setup time
 - All secrets in `.env` (git-ignored, `chmod 600`)
 - Comprehensive action logging enabled
 - Agent requires user approval before irreversible actions (purchases, deletions, public posts)
