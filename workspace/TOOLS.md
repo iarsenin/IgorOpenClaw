@@ -320,30 +320,12 @@ Otherwise no digits. See `config/riley-voice-behavior.md` for full wording.
 
 ### How outbound calls work
 
-1. Clawd receives a task requiring a phone call (e.g. "call the plumber")
-2. Clawd drafts a call plan: who, why, what to say — **and asks about callback-number authorization** — presents to user for approval
-3. On approval, Clawd runs `vapi-call.py call <number> <instructions>` (instructions include task goals **and** the YES/NO callback lines)
-4. The script POSTs to Vapi API with `assistantOverrides` containing the task + voicemail rules
-5. Vapi places the call via Riley, who follows her system prompt + task instructions
-6. After the call ends, Clawd runs `vapi-call.py status <call_id>` to retrieve:
-   - Transcript (full conversation)
-   - Structured report (summary, outcome, follow-ups)
-   - Recording URL
-7. Clawd summarizes the result for the user
+1. Draft call plan (who, why, what to say) + ask about callback-number authorization → get user approval
+2. Run `vapi-call.py call <number> <instructions>` (include task goals **and** YES/NO callback lines)
+3. Call is **async** — wait 30s, then poll `vapi-call.py status <call_id>` every 60s until `ended`
+4. Once ended, read transcript + structured report and summarize for the user
 
-### Polling for call results
-
-After `vapi-call.py call` returns, the call is **async** — Riley is talking while
-Clawd waits. Do NOT immediately run `status`; the call hasn't finished yet.
-
-1. Wait **30 seconds** after initiating the call
-2. Run `vapi-call.py status <call_id>`
-3. If status is still `in-progress` or `ringing`, wait **60 seconds** and check again
-4. Repeat until status is `ended` (most calls end within 1–5 minutes)
-5. Once ended, read the transcript and structured report
-
-If the user is in a live chat, tell them: "Call is in progress — I'll share the
-transcript when it's done." Then poll in the background.
+Tell the user: "Call is in progress — I'll share the transcript when it's done."
 
 ### CRITICAL: Riley is a separate AI with NO shared context
 
@@ -358,25 +340,13 @@ Riley only knows:
   negotiation rules, spam handling)
 - The `task_instructions` string you pass in the call command
 
-**You MUST include ALL relevant details in the task_instructions.** Be specific:
-
-BAD:  `"Call about the fridge repair"`
-GOOD: `"Call ABC Appliance Repair to schedule a fridge repair estimate. The fridge is a Samsung French Door, model RF28R7351SR, it stopped cooling yesterday. Igor is available Tuesday or Friday afternoon. Ask for a free in-home estimate. If they quote a price for the visit, note it but don't commit.\nOwner authorizes leaving callback number: YES\nCallback to provide: +19179752041"`
-
-Include: business name, what's needed, relevant details (model numbers, dates,
-prior conversations), Igor's constraints, what outcome you want, **and** the
-callback YES/NO lines after Igor approves.
+**Include ALL relevant context in task_instructions:** business name, what's needed, model numbers, dates, Igor's constraints, desired outcome, and the callback YES/NO lines. Riley has no other context.
 
 ### How inbound calls work
 
-1. Someone dials +1 (917) 962-8631
-2. Vapi routes the call to Riley (assigned as inbound assistant in Vapi dashboard)
-3. Riley answers: "Hello, this is Riley, Igor Arsenin's assistant. How can I help you?"
-4. Riley takes a message: asks who's calling, what it's about, callback number, urgency
-5. Riley blocks spam/telemarketers
-6. Every 30 minutes, the `inbound-call-check` cron job runs `vapi-call.py inbound-check`
-7. If new inbound calls are found, Clawd sends Igor a WhatsApp summary
-8. Seen calls are tracked in `.vapi-seen-calls` (git-ignored) to avoid duplicate alerts
+1. Caller dials +19179628631 → Vapi routes to Riley → Riley takes message + blocks spam
+2. Every 30 min: `inbound-call-check` cron runs `vapi-call.py inbound-check`
+3. New calls → WhatsApp summary to Igor; seen calls tracked in `.vapi-seen-calls`
 
 ### Rules
 - **Outbound calls ALWAYS require explicit user approval** — describe who you're calling, why, and what you'll say. Wait for confirmation.
@@ -395,8 +365,8 @@ callback YES/NO lines after Igor approves.
 | `VAPI_ASSISTANT_ID` | Riley assistant ID |
 | `VAPI_PHONE_NUMBER_ID` | Vapi phone number ID (+19179628631) |
 | `VAPI_PHONE_NUMBER` | The actual phone number (for display) |
-| `OPENAI_ADMIN_KEY` | Org-level admin key (Usage+Billing **Read** only) — used by `api-spend-check` cron to fetch daily OpenAI costs. Create at [platform.openai.com/settings/organization/api-keys](https://platform.openai.com/settings/organization/api-keys); restrict scopes to Usage=Read, Billing=Read. |
-| Cursor token | Not a `.env` var — read at runtime from `~/Library/Application Support/Cursor/User/globalStorage/state.vscdb` key `cursorAuth/accessToken` (refreshed automatically when Cursor is open). Used by `api-spend-check` to fetch plan/subscription status from `api2.cursor.sh/auth/full_stripe_profile`. **Cursor usage-based top-up charges are Stripe usage records not exposed by the API** — must be checked manually at https://cursor.com/settings. |
+| `OPENAI_ADMIN_KEY` | Org-level admin key (Usage+Billing Read only) — `api-spend-check` cron. Create at platform.openai.com/settings/organization/api-keys; scopes: Usage=Read, Billing=Read. |
+| Cursor token | Runtime only — from `~/Library/Application Support/Cursor/User/globalStorage/state.vscdb` (`cursorAuth/accessToken`). `api-spend-check` plan status only; usage-based charges not in API → check cursor.com/settings. |
 
 ### Troubleshooting
 
