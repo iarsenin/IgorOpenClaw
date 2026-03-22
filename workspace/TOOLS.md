@@ -106,6 +106,14 @@ himalaya message reply --account yahoo <ID>
 - When replying, use the account that received the original email
 - NEVER send without showing the draft to the user first
 
+### Yahoo rate-limit protection
+Yahoo blocks IMAP after too many rapid connections. Follow these rules:
+- **If Yahoo returns "Server error" or "UNAVAILABLE":** do NOT retry immediately.
+  Report the Gmail results, note "Yahoo is temporarily unavailable", and skip it.
+- **Never retry Yahoo more than once per 30 minutes** after a failure.
+- **Do not run multiple Yahoo connections in parallel** (e.g. list + search simultaneously).
+- If Yahoo fails on a scheduled triage, skip it silently — it will recover on the next cycle.
+
 ## Browser Rules
 
 **Always run `browser close` when done with a browser task.** Every browser
