@@ -6,9 +6,20 @@
 - **Shell:** zsh
 - **Node.js:** 22.22.1 (via nvm at ~/.nvm/versions/node/v22.22.1/)
 - **OpenClaw:** 2026.3.13
-- **OpenClaw config:** ~/.openclaw/openclaw.json (symlinked from repo config/)
-- **OpenClaw workspace:** ~/.openclaw/workspace/ (symlinked from repo workspace/)
+- **OpenClaw config:** `~/.openclaw/openclaw.json` — **copied** from `config/openclaw.json.template` by `scripts/setup.sh` (token injected from `.env`; file is git-ignored — **not** a symlink)
+- **OpenClaw workspace:** `~/.openclaw/workspace/` — **symlinked** from repo `workspace/`
+- **Cron jobs:** `~/.openclaw/cron/jobs.json` — **symlinked** from repo `config/cron/jobs.json`
 - **Repo location:** ~/Library/CloudStorage/GoogleDrive-igor.arsenin@gmail.com/My Drive/git/IgorOpenClaw
+- **Gateway shell:** Prefer **`python3`** (not `python`) and **`grep`** — **`rg` (ripgrep) is often missing** from the daemon PATH and will fail (`command not found: rg`).
+
+## Interaction with Igor (quick replies)
+
+When you need a **decision or extra information** from Igor, **prefer**:
+
+- **Yes / no** questions when that fits.
+- **Multiple choice** (options labeled **A/B/C** or **1/2/3**) when there are a few clear paths.
+
+Do **not** force this when only an open-ended answer is appropriate. Full rules and examples: `workspace/AGENTS.md` § **Questions to the user**; style note in `workspace/SOUL.md` § Communication Style.
 
 ## Bundled Skills (ready)
 
@@ -116,14 +127,22 @@ Yahoo blocks IMAP after too many rapid connections. Follow these rules:
 
 ## Browser Rules
 
-**Always run `browser close` when done with a browser task.** Every browser
-session must end with cleanup — no exceptions. Leaving tabs open wastes memory
-and blocks the Chrome debug port for future tasks.
+**Always run `browser close` when done with a browser task.** Igor still sees
+**Chrome windows left open** if you skip this — treat **`browser close` as part
+of “done,”** not optional cleanup.
 
-Pattern for every browser task:
-1. `browser navigate <url>`
+### Mandatory sequence
+
+1. `browser navigate` / open tab (only if needed)
 2. Do your work (act, extract, screenshot, etc.)
-3. `browser close` — **mandatory final step**
+3. **`browser close` — last command before** your final user-visible reply (WhatsApp) **or** before ending an isolated cron session
+4. If step 2 **errors or times out**, still run step 3, **then** explain the failure
+
+### Rules
+
+- **No exceptions:** success, failure, timeout, user changes topic mid-flow — if you **opened** the browser this run, **close** it this run.
+- **Cron jobs** that touch the browser (e.g. Chrono24 monitor) must end with **`browser close`**.
+- **`post-restart-resume`** and **`system-health`** prompts also tell you to run **`browser close`** when clearing orphans — do it.
 
 The built-in browser tool requires Chrome with remote debugging. It is fragile.
 **Do NOT suggest the Browser Relay extension** — it is not installed and adds
@@ -134,6 +153,23 @@ truly need browser automation, use the `browser-automation` Playwright skill.
 
 Read and send iMessages and SMS texts via the Messages.app database and AppleScript.
 Requires Full Disk Access granted to the node binary.
+
+### CRITICAL: Not the same as WhatsApp (no live push to Clawd)
+
+**Apple Messages (SMS / iMessage)** does **not** connect to the OpenClaw gateway.
+Only **WhatsApp** messages to the bridge wake the agent in real time.
+
+- Texts that appear **only** in the Messages app (e.g. vendor SMS like Precision)
+  are **invisible** to Clawd until it runs `imessage.py` (or you **paste** the text
+  into **WhatsApp**).
+- **New replies** in an SMS thread after a one-off read are **not** notified —
+  ask again (e.g. *“re-read the Precision SMS thread”*) or forward key lines on WhatsApp.
+- For **active** tasks waiting on SMS vendors, Clawd should **re-check** `imessage.py read`
+  when the user asks for status or after explicit “check Messages for X” instructions.
+- **Automatic polling:** cron job **`sms-reply-monitor`** (see `config/cron/jobs.json`, ~every 2h
+  8:30 AM–8:30 PM ET) reads `MEMORY.md` for **`sms-watch`** entries, runs `imessage.py read`,
+  and WhatsApps Igor only when there is **new vendor inbound** since **`last-sms-baseline`**.
+  When Clawd **sends** vendor SMS, it must set/update those fields per `AGENTS.md` § SMS reply monitoring.
 
 ### Commands
 
@@ -227,8 +263,7 @@ Polling:   cron (every 30 min) → vapi-call.py inbound-check → WhatsApp alert
 - **Fallback destination:** +19179752041 (Igor's cell — transfers if Riley is unavailable)
 - **Model:** OpenAI gpt-4o (managed by Vapi, not our API key)
 - **Cost:** ~11 cents/minute
-- **System prompt:** managed via Vapi API (PATCH /assistant/{id}), NOT stored in this repo.
-  Covers outbound task execution + inbound message-taking + spam blocking.
+- **System prompt:** Base prompt is edited in Vapi (dashboard or PATCH). **Canonical snippets** for voicemail + callback policy live in `config/riley-voice-behavior.md`. Every outbound call also injects the same voicemail rules via `assistantOverrides` in `vapi-call.py`.
 
 ### Commands
 
@@ -248,12 +283,47 @@ python3 "$REPO/scripts/vapi-call.py" list --limit 10
 python3 "$REPO/scripts/vapi-call.py" inbound-check
 ```
 
+### Callback authorization (required before dialing)
+
+Riley may only speak a callback number on voicemail (or when appropriate) if Igor
+has **explicitly** authorized it for that call.
+
+1. When you draft the call plan for approval, **ask**: e.g. *“If this goes to
+   voicemail or they ask for a number, may Riley leave your callback number
+   (+19179752041), or should she end without giving a number?”*
+2. Encode the decision **verbatim** in the task string passed to `vapi-call.py`:
+
+**Authorized** (use Igor’s cell or another number he specifies):
+
+```text
+Owner authorizes leaving callback number: YES
+Callback to provide: +19179752041
+```
+
+**Not authorized** (include this line; or omit the YES block entirely):
+
+```text
+Owner authorizes leaving callback number: NO
+```
+
+Optional: Igor may prefer return calls to the Vapi line — then use
+`Callback to provide: +19179628631` with the same YES line.
+
+The script appends voicemail rules that **parse these exact lines**; do not
+rephrase them.
+
+### Voicemail behavior (Riley)
+
+On voicemail: **very short** message — Riley’s name, one sentence purpose, then
+the callback number **only if** YES + `Callback to provide:` are in the task.
+Otherwise no digits. See `config/riley-voice-behavior.md` for full wording.
+
 ### How outbound calls work
 
 1. Clawd receives a task requiring a phone call (e.g. "call the plumber")
-2. Clawd drafts a call plan: who, why, what to say — presents to user for approval
-3. On approval, Clawd runs `vapi-call.py call <number> <instructions>`
-4. The script POSTs to Vapi API with `assistantOverrides` containing the task
+2. Clawd drafts a call plan: who, why, what to say — **and asks about callback-number authorization** — presents to user for approval
+3. On approval, Clawd runs `vapi-call.py call <number> <instructions>` (instructions include task goals **and** the YES/NO callback lines)
+4. The script POSTs to Vapi API with `assistantOverrides` containing the task + voicemail rules
 5. Vapi places the call via Riley, who follows her system prompt + task instructions
 6. After the call ends, Clawd runs `vapi-call.py status <call_id>` to retrieve:
    - Transcript (full conversation)
@@ -291,10 +361,11 @@ Riley only knows:
 **You MUST include ALL relevant details in the task_instructions.** Be specific:
 
 BAD:  `"Call about the fridge repair"`
-GOOD: `"Call ABC Appliance Repair to schedule a fridge repair estimate. The fridge is a Samsung French Door, model RF28R7351SR, it stopped cooling yesterday. Igor is available Tuesday or Friday afternoon. Ask for a free in-home estimate. If they quote a price for the visit, note it but don't commit."`
+GOOD: `"Call ABC Appliance Repair to schedule a fridge repair estimate. The fridge is a Samsung French Door, model RF28R7351SR, it stopped cooling yesterday. Igor is available Tuesday or Friday afternoon. Ask for a free in-home estimate. If they quote a price for the visit, note it but don't commit.\nOwner authorizes leaving callback number: YES\nCallback to provide: +19179752041"`
 
 Include: business name, what's needed, relevant details (model numbers, dates,
-prior conversations), Igor's constraints, and what outcome you want.
+prior conversations), Igor's constraints, what outcome you want, **and** the
+callback YES/NO lines after Igor approves.
 
 ### How inbound calls work
 
@@ -324,13 +395,14 @@ prior conversations), Igor's constraints, and what outcome you want.
 | `VAPI_ASSISTANT_ID` | Riley assistant ID |
 | `VAPI_PHONE_NUMBER_ID` | Vapi phone number ID (+19179628631) |
 | `VAPI_PHONE_NUMBER` | The actual phone number (for display) |
+| `OPENAI_ADMIN_KEY` | Org-level admin key (Usage+Billing **Read** only) — used by `api-spend-check` cron to fetch daily OpenAI costs. Create at [platform.openai.com/settings/organization/api-keys](https://platform.openai.com/settings/organization/api-keys); restrict scopes to Usage=Read, Billing=Read. |
 
 ### Troubleshooting
 
 - **SSL errors:** macOS Python 3.10 may lack certificates. The script auto-falls back to unverified SSL. Install `certifi` (`pip3 install certifi`) for proper verification.
 - **403 / Cloudflare errors:** The script uses `User-Agent: OpenClaw/1.0` to avoid blocks. If Vapi changes their WAF rules, update the User-Agent header.
 - **Call not connecting:** Check `vapi-call.py status <call_id>` for `endedReason`. Common: `customer-did-not-answer`, `customer-busy`.
-- **Changing Riley's behavior:** Update the system prompt via Vapi API (PATCH to `/assistant/{VAPI_ASSISTANT_ID}`). Do NOT edit it in the Vapi dashboard — the API is the source of truth.
+- **Changing Riley's behavior:** Merge `config/riley-voice-behavior.md` into the assistant system prompt (Vapi dashboard or PATCH `/assistant/{VAPI_ASSISTANT_ID}`). Outbound voicemail rules are also injected per call by `vapi-call.py`.
 
 ## Built-in Tools
 

@@ -146,6 +146,9 @@ nano .env
 Fill in your actual values:
 ```
 OPENAI_API_KEY=sk-your-actual-key-here
+# Admin key for daily spend reporting (Usage+Billing Read only)
+# Create at: platform.openai.com/settings/organization/api-keys
+OPENAI_ADMIN_KEY=sk-admin-your-actual-admin-key
 GEMINI_API_KEY=AIza-your-actual-key-here
 OPENCLAW_AUTH_TOKEN=<generate one — see step 3.4>
 GMAIL_USER=your_email@gmail.com
@@ -198,7 +201,7 @@ bash scripts/setup.sh
 This script:
 - Verifies Node.js and OpenClaw are installed
 - Creates `~/.openclaw/` directory
-- Symlinks `config/openclaw.json` → `~/.openclaw/openclaw.json`
+- **Copies** `config/openclaw.json.template` → `~/.openclaw/openclaw.json` (injects `OPENCLAW_AUTH_TOKEN` from `.env` — **not** a symlink; git-ignored live config)
 - Symlinks `workspace/` → `~/.openclaw/workspace/`
 - Symlinks `config/cron/jobs.json` → `~/.openclaw/cron/jobs.json`
 - Loads your `.env` variables
@@ -223,11 +226,11 @@ The interactive wizard will ask you to:
 
 ## 5. Configuration
 
-The main configuration file is at `~/.openclaw/openclaw.json` (or symlinked from the repo's `config/openclaw.json`).
+The live gateway config is **`~/.openclaw/openclaw.json`** (generated from **`config/openclaw.json.template`** by `setup.sh`). The repo may also contain a local `config/openclaw.json` for editing — keep it in sync with the template if you use both.
 
 ### 5.1 Key configuration sections
 
-The IgorOpenClaw repo includes a pre-built config with:
+The IgorOpenClaw template includes:
 
 - **Identity**: Agent named "Clawd"
 - **Models**: OpenAI `gpt-4o` as primary, Google `gemini-2.5-pro` as fallback
@@ -238,13 +241,11 @@ The IgorOpenClaw repo includes a pre-built config with:
 
 ### 5.2 Customize the config
 
-Edit `config/openclaw.json` in the repo (not `~/.openclaw/openclaw.json` directly, since it's a symlink):
+**Durable path:** edit `config/openclaw.json.template`, then re-run `bash scripts/setup.sh` to regenerate `~/.openclaw/openclaw.json`.
+
+**Quick path:** edit `~/.openclaw/openclaw.json` directly, then:
 
 ```bash
-# Edit in the repo
-nano ~/Library/CloudStorage/GoogleDrive-igor.arsenin@gmail.com/My\ Drive/git/IgorOpenClaw/config/openclaw.json
-
-# After editing, restart the gateway
 openclaw gateway restart
 ```
 
@@ -268,6 +269,19 @@ List available models:
 ```bash
 openclaw models list
 ```
+
+### 5.4 Workspace instructions (how Clawd behaves)
+
+The `workspace/` directory (symlinked to `~/.openclaw/workspace/`) holds markdown
+files the agent reads every turn — **no gateway restart** needed after edits.
+
+Key files: `AGENTS.md` (rules), `SOUL.md` (tone), `USER.md` (owner context),
+`TOOLS.md` (tools), `MEMORY.md` (persistent tasks), `HEARTBEAT.md` (proactive behavior).
+
+**Question style:** When the agent needs a **decision or missing detail** from you,
+it should **prefer yes/no or multiple-choice** (A/B/C or 1/2/3) when that fits your
+reply on WhatsApp — not open-ended questions. It should **not** force that format
+when only a free-form answer makes sense. See `workspace/AGENTS.md` § **Questions to the user**.
 
 ---
 
@@ -319,7 +333,7 @@ OpenClaw has significant system access. These steps reduce the attack surface.
 
 ### 7.1 Gateway binding (CRITICAL)
 
-Already configured in the repo's `openclaw.json`:
+Already configured in `config/openclaw.json.template` (copied to `~/.openclaw/openclaw.json` by setup):
 
 ```json5
 gateway: {
@@ -486,7 +500,9 @@ and conversational flow. OpenClaw controls it via REST API.
    - **First Message:** `Hi, I'm calling on behalf of Igor Arsenin. How are you?`
    - **System Prompt:** A comprehensive prompt covering outbound task execution,
      inbound message-taking, negotiation boundaries, and spam blocking.
-     See `workspace/TOOLS.md § Phone Calls` for the full prompt structure.
+     Merge the **Outbound voicemail & callback** section from
+     `config/riley-voice-behavior.md` into the system prompt. See
+     `workspace/TOOLS.md § Phone Calls` for architecture and Clawd rules.
    - **Max tokens:** 500, **Temperature:** 0.5
    - **Transcriber:** Deepgram, English. Add custom keywords: your name, contacts, brands.
    - **Voice:** Elliot (or any preferred voice)
@@ -556,7 +572,7 @@ Polling:   cron (every 30 min) → vapi-call.py inbound-check → WhatsApp alert
 ```
 
 - `scripts/vapi-call.py` is a standalone Python script (no pip dependencies)
-- Riley's system prompt is managed via Vapi API (PATCH /assistant/{id}), not stored in this repo
+- Riley's base system prompt is edited in Vapi; canonical voicemail/callback text is in `config/riley-voice-behavior.md`, and the same outbound voicemail rules are injected on every outbound call via `assistantOverrides`
 - Inbound calls are tracked in `.vapi-seen-calls` (git-ignored) to avoid duplicate alerts
 - The `inbound-call-check` cron job in `config/cron/jobs.json` runs every 30 minutes
 - Outbound calls use `assistantOverrides` to inject task-specific instructions per call
@@ -583,7 +599,8 @@ openclaw skills list
 
 # 4. Cron jobs are loaded
 openclaw cron list
-# Expected: morning-briefing, email-triage, inbound-call-check, system-health
+# Expected: post-restart-resume, morning-briefing, api-spend-check, email-triage,
+#           chrono24-listing-monitor, sms-reply-monitor, inbound-call-check, system-health
 
 # 5. Open the dashboard
 openclaw dashboard
@@ -645,7 +662,7 @@ This is a rough architectural outline for using OpenClaw to autonomously researc
 7. **Deliver**: Agent commits to a git branch and notifies you with a summary of what was built
 
 ### Key components
-- **Multi-model routing**: Configure `openclaw.json` with both OpenAI and Gemini providers; use the agent's model-switching capabilities to route different phases to different models
+- **Multi-model routing**: Configure `~/.openclaw/openclaw.json` (from `config/openclaw.json.template`) with both OpenAI and Gemini providers; use the agent's model-switching capabilities to route different phases to different models
 - **cursor-ide-agent skill**: Path 1 (CLI) for fast non-interactive coding, Path 2 (Node/IDE) for features like diagnostics and test running
 - **Cron jobs**: For long-running research that continues overnight
 - **autonomy-windowed skill**: Restrict autonomous actions to safe hours (e.g., 8 AM–8 PM) to prevent runaway loops at night
@@ -728,6 +745,12 @@ openclaw skills install browser-automation
 npx playwright install chromium
 ```
 
+### Managed Chrome windows stay open after Clawd finishes
+
+Clawd should **`browser close`** in the **same turn** after any managed browser use (see `workspace/AGENTS.md` § Browser hygiene and `workspace/TOOLS.md` § Browser Rules). Isolated crons that use the browser also end with **`browser close`**; **`post-restart-resume`** and **`system-health`** try **`browser close`** once to clear orphans.
+
+**If windows are still left open:** message Clawd (WhatsApp) with *“run browser close now”*; or restart the gateway after an isolated session; the **daily 4 AM ET** restart also recycles the debug Chrome profile. If it keeps happening, check `~/.openclaw/logs/gateway.log` for browser timeouts — the model may be skipping the close step.
+
 ### Daemon crashes on restart (known macOS issue)
 
 If the gateway fails to restart via `openclaw gateway restart`, try:
@@ -744,9 +767,8 @@ This avoids a known launchd race condition where the old process hasn't fully re
 ### Config changes not taking effect
 
 ```bash
-# Verify the symlink is correct
+# Verify config exists (copy from template — not a symlink)
 ls -la ~/.openclaw/openclaw.json
-# Should point to your repo's config/openclaw.json
 
 # Restart after config changes
 openclaw gateway restart

@@ -104,7 +104,7 @@ fi
 
 # --- Re-inject config if gateway install overwrote it ---
 if [ -f "$OPENCLAW_DIR/openclaw.json" ]; then
-    if ! grep -q "$OPENCLAW_AUTH_TOKEN" "$OPENCLAW_DIR/openclaw.json" 2>/dev/null; then
+    if [ -n "${OPENCLAW_AUTH_TOKEN:-}" ] && ! grep -qF "${OPENCLAW_AUTH_TOKEN}" "$OPENCLAW_DIR/openclaw.json" 2>/dev/null; then
         echo "Re-injecting config (gateway install may have overwritten it)..."
         cp "$TEMPLATE" "$TARGET_CONFIG"
         if [ -n "${OPENCLAW_AUTH_TOKEN:-}" ]; then
@@ -137,7 +137,7 @@ echo "=== Setup Complete ==="
 echo ""
 echo "Next steps:"
 echo "  1. Edit .env with your real API keys (if not done)"
-echo "  2. Update config/openclaw.json with your WhatsApp number"
+echo "  2. Update config/openclaw.json.template (WhatsApp allowlist etc.), then re-run this script"
 echo "  3. Run: openclaw channels add --channel whatsapp"
 echo "  4. Verify: openclaw gateway status"
 echo "  5. Open dashboard: openclaw dashboard"

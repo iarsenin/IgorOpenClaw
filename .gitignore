@@ -5,6 +5,8 @@
 
 # Generated config (contains injected secrets from .env)
 config/openclaw.json
+__pycache__/
+*.pyc
 
 # OpenClaw runtime artifacts
 credentials/

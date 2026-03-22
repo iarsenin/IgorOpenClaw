@@ -1,6 +1,12 @@
 #!/usr/bin/env python3
 """Vapi AI phone call helper for OpenClaw agent.
 
+Task instructions should include callback authorization lines when relevant:
+    Owner authorizes leaving callback number: YES
+    Callback to provide: +1...
+  or: Owner authorizes leaving callback number: NO
+See config/riley-voice-behavior.md and workspace/TOOLS.md.
+
 Usage:
     vapi-call.py call <number> <task_instructions>   Make an outbound call
     vapi-call.py status <call_id>                    Check call status/transcript
@@ -21,6 +27,20 @@ import urllib.request
 import urllib.error
 
 API_BASE = "https://api.vapi.ai"
+
+# Appended to every outbound call's assistantOverrides system message (see
+# config/riley-voice-behavior.md — keep in sync).
+OUTBOUND_VOICE_RULES = """
+VOICEMAIL / IVR (outbound calls):
+- If you detect voicemail or a prompt-only greeting asking you to leave a message (beep, "leave a message", "at the tone", etc.), switch to voicemail mode.
+- Leave a VERY short message (aim under ~20 seconds): identify yourself as Riley, Igor Arsenin's assistant; one sentence on why you're calling (from the task).
+- Callback number: ONLY if the TASK FOR THIS CALL section above includes the exact line "Owner authorizes leaving callback number: YES" and a following line starting with "Callback to provide:", then speak that number slowly and clearly at the end (group digits for clarity).
+- If the task includes "Owner authorizes leaving callback number: NO" or omits the YES line, do NOT speak any phone number on voicemail; end politely (e.g. Igor will follow up) without reciting a number.
+- With a live human, follow the task; do not volunteer Igor's personal number unless the task authorizes it with the YES line and "Callback to provide:" line.
+
+Never commit to payments or final decisions. Follow your base system prompt for tone and inbound rules.
+""".strip()
+
 
 def get_env(key):
     val = os.environ.get(key)
@@ -158,7 +178,7 @@ def cmd_status(call_id):
             role = msg.get("role", "?")
             text = msg.get("message") or msg.get("content", "")
             if text:
-                label = "Clawd" if role in ("assistant", "bot") else "Caller"
+                label = "Riley" if role in ("assistant", "bot") else "Caller"
                 print(f"  [{label}]: {text}")
 
 

@@ -9,9 +9,10 @@ repository** for an OpenClaw autonomous AI agent running on a Mac Mini M2
 OpenClaw is installed globally via npm (`npm install -g openclaw`). This repo
 contains:
 
-- `config/openclaw.json.template` — the main OpenClaw configuration template
-  (secrets are injected from `.env` by `scripts/setup.sh` into
-  `~/.openclaw/openclaw.json` — the generated file is git-ignored)
+- `config/openclaw.json.template` — main OpenClaw configuration template (secrets
+  injected from `.env` by `scripts/setup.sh` into `~/.openclaw/openclaw.json` —
+  generated file is git-ignored)
+- `config/riley-voice-behavior.md` — canonical Vapi assistant voicemail + callback policy (merge into Riley’s system prompt)
 - `workspace/` — OpenClaw agent workspace files (AGENTS.md, SOUL.md, etc.),
   symlinked into `~/.openclaw/workspace/`
 - `scripts/` — setup, teardown, and integration helpers (imessage.py, whatsapp.py,
@@ -24,8 +25,8 @@ contains:
    files reference them via environment variable names only.
 2. **Never hardcode API keys, tokens, or passwords** in any file that gets
    committed.
-3. **After editing `config/openclaw.json`**, the OpenClaw gateway must be
-   restarted: `openclaw gateway restart`.
+3. **After editing `config/openclaw.json.template`** (then re-run `setup.sh`) **or**
+   **`~/.openclaw/openclaw.json`**, restart the gateway: `openclaw gateway restart`.
 4. **After editing any `workspace/*.md` file**, changes take effect on the
    agent's next turn (no restart needed).
 5. **SETUP_GUIDE.md is a standalone doc** meant to be pasted into a Gemini
@@ -37,7 +38,7 @@ contains:
   Gemini fallback), WhatsApp channel, security settings. Auth token placeholder
   `__OPENCLAW_AUTH_TOKEN__` is injected from `.env` at setup time.
 - `config/cron/jobs.json` — scheduled/heartbeat job definitions
-- `workspace/AGENTS.md` — operational rules and task routing
+- `workspace/AGENTS.md` — operational rules, task routing, and **Questions to the user** (prefer y/n and multiple choice when practical)
 - `workspace/SOUL.md` — agent personality and tone
 - `workspace/USER.md` — user context (timezone, preferences)
 - `workspace/TOOLS.md` — available tools and environment notes
@@ -67,7 +68,8 @@ contains:
    ```
    Never commit `.env` or any file containing secrets.
 
-3. **Restart if needed.** After editing `config/openclaw.json` or `scripts/`:
+3. **Restart if needed.** After editing `config/openclaw.json.template` / live
+   `~/.openclaw/openclaw.json` or `scripts/`:
    ```bash
    openclaw gateway restart
    ```
@@ -97,8 +99,11 @@ Keep this section updated after every change session.
 - **Daily restart:** 4 AM ET via launchd (ai.openclaw.daily-restart), restarts
   Chrome debug profile + gateway
 - **Cron jobs:** post-restart-resume (4:05 AM), morning briefing (7:30 AM),
-  email triage (every 2h 8AM-10PM), inbound call check (every 30 min),
-  system health (every 6h)
+  api-spend-check (5:00 AM — OpenAI+Vapi last-24h $ → WhatsApp; uses OPENAI_ADMIN_KEY),
+  email triage (every 2h 8AM-10PM), chrono24-listing-monitor (5× daily if MEMORY
+  has Chrono24 task), sms-reply-monitor (~every 2h 8:30AM–8:30PM ET, **sms-watch**),
+  inbound call check (every 30 min), system health (every 6h). Browser-using
+  crons must end with **browser close** (AGENTS.md § Browser hygiene).
 - **Task persistence:** ongoing tasks written to MEMORY.md → Active Tasks with
   TTL (default 7 days), explicit done-when criteria, 48h staleness rule.
   See AGENTS.md § Task Persistence for full rules.
@@ -114,11 +119,14 @@ Keep this section updated after every change session.
 - **Phone calls:** scripts/vapi-call.py (outbound + inbound via Vapi AI).
   Voice agent "Riley" (assistant ID in VAPI_ASSISTANT_ID env var).
   Outbound number: +19179628631. Fallback: +19179752041 (Igor's cell).
-  Always ask user before dialing outbound. Cost ~11¢/min.
+  Always ask user before dialing outbound; ask whether Riley may leave a callback
+  number on voicemail, and encode YES/NO in the task string (see TOOLS.md).
+  Cost ~11¢/min.
   Inbound calls auto-answered by Riley (takes messages, blocks spam).
   Inbound polling: cron every 30 min → vapi-call.py inbound-check → WhatsApp alert.
-  Riley's system prompt is managed via Vapi API (PATCH /assistant/{id}), not in this repo.
+  Voicemail/callback policy: `config/riley-voice-behavior.md` + per-call injection in `vapi-call.py`.
   See TOOLS.md § Phone Calls for full architecture and troubleshooting.
 - **Email:** himalaya CLI (IMAP/SMTP with Gmail app password) + gog gmail (OAuth)
 - **Calendar/Drive/Contacts:** gog CLI (OAuth, project polar-city-407401)
+- **User questions:** When Clawd needs a decision or missing info from Igor, prefer **yes/no** or **multiple-choice** (A/B/C) when it fits; don’t force when only open-ended works. See `workspace/AGENTS.md` § Questions to the user.
 - **GitHub:** https://github.com/iarsenin/IgorOpenClaw (private)

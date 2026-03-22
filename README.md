@@ -12,7 +12,7 @@ This repository is the single source of truth for an OpenClaw agent that:
 - Automates browser interactions, email, iMessage/SMS, phone calls (Vapi AI), file management, and coding workflows
 - Integrates with Cursor IDE for autonomous coding and research
 
-The agent acts on its owner's behalf — browsing the web, managing email, running shell commands, and orchestrating multi-step workflows — while requiring explicit approval before irreversible actions.
+The agent acts on its owner's behalf — browsing the web, managing email, running shell commands, and orchestrating multi-step workflows — while requiring explicit approval before irreversible actions. When it needs a decision or missing info from the owner, it **prefers yes/no or multiple-choice questions** when practical (see `workspace/AGENTS.md`).
 
 ## Architecture
 
@@ -54,17 +54,18 @@ IgorOpenClaw/
 ├── .gitignore
 ├── config/
 │   ├── openclaw.json.template ← Config template (token injected from .env by setup.sh)
+│   ├── riley-voice-behavior.md ← Vapi assistant voicemail + callback policy (merge into Riley prompt)
 │   └── cron/
 │       └── jobs.json      ← Scheduled task definitions
 ├── workspace/             ← OpenClaw agent workspace files (symlinked to ~/.openclaw/workspace/)
-│   ├── AGENTS.md          ← Operational rules, task routing, delegation
+│   ├── AGENTS.md          ← Operational rules, task routing, delegation, question style (y/n, multiple choice)
 │   ├── SOUL.md            ← Agent personality and communication style
 │   ├── USER.md            ← User context (timezone, preferences, accounts)
 │   ├── TOOLS.md           ← Available tools and environment notes
 │   ├── MEMORY.md          ← Agent persistent state (active tasks, completed log, learned patterns)
 │   └── HEARTBEAT.md       ← Proactive behavior guidelines (references cron/jobs.json)
 └── scripts/
-    ├── setup.sh           ← One-command bootstrap (symlinks, dirs, daemon install)
+    ├── setup.sh           ← Bootstrap: copy config from template, symlink workspace+cron, daemon install
     ├── imessage.py        ← iMessage/SMS read & send helper (chat.db + AppleScript)
     ├── whatsapp.py        ← WhatsApp message history reader (parses gateway logs)
     ├── vapi-call.py       ← Outbound phone calls via Vapi AI voice agent
@@ -86,7 +87,7 @@ chmod 600 .env
 # 3. Install OpenClaw (requires Node.js 22+)
 npm install -g openclaw@latest
 
-# 4. Run the setup script (symlinks config, installs daemon)
+# 4. Run the setup script (generates ~/.openclaw/openclaw.json, symlinks workspace + cron, installs daemon)
 bash scripts/setup.sh
 
 # 5. Verify
@@ -115,6 +116,6 @@ Agent workspace files (`workspace/*.md`) take effect on the next agent turn with
 - Agent requires user approval before irreversible actions (purchases, deletions, public posts)
 - Browser sessions always cleaned up (`browser close`) to prevent resource leaks
 - Ongoing tasks persisted to MEMORY.md with TTL (7-day default) and 48h staleness detection
-- Phone calls require explicit user approval before dialing; Riley (voice agent) never commits to payments
+- Phone calls require explicit user approval before dialing (including whether Riley may leave a callback number on voicemail); Riley never commits to payments
 - Inbound calls answered by AI; messages relayed to owner via WhatsApp
 - See the Security Hardening section in [SETUP_GUIDE.md](SETUP_GUIDE.md) for the full checklist

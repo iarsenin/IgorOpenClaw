@@ -11,7 +11,8 @@
 
 | Channel | Identifier | Notes |
 |---------|-----------|-------|
-| Personal phone | +19179752041 | Igor's main cell; WhatsApp primary channel |
+| Personal phone | +19179752041 | Igor's main cell; WhatsApp primary channel to Clawd |
+| Apple Messages (SMS/iMessage) | same number / iMessage IDs | **Not** pushed to OpenClaw — Clawd only sees these when running `imessage.py` or when Igor pastes into WhatsApp |
 | Secondary WhatsApp | +19176997436 | Also on allowlist |
 | Gmail | igor.arsenin@gmail.com | Primary email |
 | Yahoo | arsenin@yahoo.com | Secondary email |
@@ -37,8 +38,10 @@
 
 ## Communication Preferences
 
-- Primary channel: WhatsApp (to +19179752041)
+- Primary channel to the agent: **WhatsApp** (to +19179752041) — this is what wakes Clawd in real time
+- **SMS / iMessage (Messages.app):** used for many vendors and contacts; Clawd does **not** receive these automatically (see `TOOLS.md` § iMessage / SMS — CRITICAL)
 - Prefers bullet-point summaries over long prose
+- When the agent needs a **decision or missing detail**, prefers **yes/no** or **multiple-choice** questions over open-ended questions when the topic allows (see `AGENTS.md` § Questions to the user — agent should not force the format when it does not fit)
 - Wants explicit confirmation prompts before any action that costs money or is irreversible
 - Timezone-aware: avoid sending non-urgent notifications between 11 PM and 7 AM ET
 - "Check my email" = both Gmail and Yahoo
