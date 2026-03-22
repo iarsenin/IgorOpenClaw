@@ -99,7 +99,7 @@ Keep this section updated after every change session.
 - **Daily restart:** 4 AM ET via launchd (ai.openclaw.daily-restart), restarts
   Chrome debug profile + gateway
 - **Cron jobs:** post-restart-resume (4:05 AM), morning briefing (7:30 AM),
-  api-spend-check (5:00 AM — OpenAI+Vapi last-24h $ → WhatsApp; uses OPENAI_ADMIN_KEY),
+  api-spend-check (5:00 AM — OpenAI+Vapi last-24h $ + Cursor plan status → WhatsApp; uses OPENAI_ADMIN_KEY; reads Cursor token from local SQLite),
   email triage (every 2h 8AM-10PM), chrono24-listing-monitor (5× daily if MEMORY
   has Chrono24 task), sms-reply-monitor (~every 2h 8:30AM–8:30PM ET, **sms-watch**),
   inbound call check (every 30 min), system health (every 6h). Browser-using

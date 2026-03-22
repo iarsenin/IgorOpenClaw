@@ -22,7 +22,7 @@
 | chrono24-listing-monitor | 8 AM, 11 AM, 2 PM, 5 PM, 8 PM ET (5×) | Chrono24 listing vs **last-chrono-baseline** |
 | sms-reply-monitor  | ~2h, 8:30 AM–8:30 PM ET | Poll `MEMORY` **sms-watch** threads via `imessage.py`; on read errors, note MEMORY only (no WhatsApp spam unless urgent) |
 | inbound-call-check | Every 30 min          | Poll Vapi for new inbound calls      |
-| api-spend-check    | 5:00 AM ET daily      | OpenAI + Vapi last-24h spend → WhatsApp |
+| api-spend-check    | 5:00 AM ET daily      | OpenAI + Vapi last-24h $ + Cursor plan status → WhatsApp |
 | system-health      | Every 6h              | Gateway, disk, error log check       |
 
 ## Behavioral Rules
