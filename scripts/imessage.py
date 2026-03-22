@@ -15,10 +15,11 @@ import subprocess
 import sys
 import os
 from datetime import datetime, timezone, timedelta
+from zoneinfo import ZoneInfo
 
 DB_PATH = os.path.expanduser("~/Library/Messages/chat.db")
 APPLE_EPOCH = 978307200  # seconds between Unix epoch and Apple epoch (2001-01-01)
-ET = timezone(timedelta(hours=-4))
+ET = ZoneInfo("America/New_York")
 
 
 def apple_ts_to_str(ts):
@@ -38,14 +39,20 @@ def extract_text(text, attributed_body):
         return "(no text / attachment)"
     try:
         blob = bytes(attributed_body)
-        # macOS stores NSAttributedString with the plain text after a known marker:
-        # ...NSString\x01\x94\x84\x01+<length_byte><text_bytes>...
         marker = b"NSString\x01\x94\x84\x01+"
         idx = blob.find(marker)
         if idx != -1:
             start = idx + len(marker)
-            length = blob[start]
-            text_bytes = blob[start + 1 : start + 1 + length]
+            length_byte = blob[start]
+            if length_byte & 0x80:
+                # Multi-byte length: high bit set means the low 7 bits encode
+                # the number of following bytes that hold the actual length.
+                n_bytes = length_byte & 0x7F
+                length = int.from_bytes(blob[start + 1 : start + 1 + n_bytes], "big")
+                text_bytes = blob[start + 1 + n_bytes : start + 1 + n_bytes + length]
+            else:
+                length = length_byte
+                text_bytes = blob[start + 1 : start + 1 + length]
             return text_bytes.decode("utf-8", errors="replace")
     except Exception:
         pass
@@ -190,50 +197,37 @@ def cmd_search(query, limit=20):
     db.close()
 
 
+def _escape_applescript(s):
+    """Escape a string for safe embedding in AppleScript double-quoted literals."""
+    return s.replace("\\", "\\\\").replace('"', '\\"')
+
+
 def cmd_send(number, message):
     """Send a message via Messages.app AppleScript."""
-    # Determine service — try iMessage first, fall back to SMS
-    script = f'''
-    tell application "Messages"
-        set targetService to 1st account whose service type = iMessage
-        set targetBuddy to participant "{number}" of targetService
-        send "{message}" to targetBuddy
-    end tell
-    '''
-    # Simpler approach: send to a chat by identifier
-    script_simple = f'''
-    tell application "Messages"
-        set targetChat to a reference to chat id "iMessage;-;{number}"
-        send "{message}" to targetChat
-    end tell
-    '''
-    try:
-        result = subprocess.run(
-            ["osascript", "-e", script_simple],
-            capture_output=True, text=True, timeout=10
+    safe_number = _escape_applescript(number)
+    safe_message = _escape_applescript(message)
+
+    for service in ("iMessage", "SMS"):
+        script = (
+            'tell application "Messages"\n'
+            f'    set targetChat to a reference to chat id "{service};-;{safe_number}"\n'
+            f'    send "{safe_message}" to targetChat\n'
+            'end tell'
         )
-        if result.returncode == 0:
-            print(f"Sent to {number} via iMessage")
-            return
-        # Try SMS
-        script_sms = f'''
-        tell application "Messages"
-            set targetChat to a reference to chat id "SMS;-;{number}"
-            send "{message}" to targetChat
-        end tell
-        '''
-        result = subprocess.run(
-            ["osascript", "-e", script_sms],
-            capture_output=True, text=True, timeout=10
-        )
-        if result.returncode == 0:
-            print(f"Sent to {number} via SMS")
-            return
-        print(f"ERROR: Could not send. {result.stderr.strip()}", file=sys.stderr)
-        sys.exit(1)
-    except subprocess.TimeoutExpired:
-        print("ERROR: Messages.app timed out", file=sys.stderr)
-        sys.exit(1)
+        try:
+            result = subprocess.run(
+                ["osascript", "-e", script],
+                capture_output=True, text=True, timeout=10
+            )
+            if result.returncode == 0:
+                print(f"Sent to {number} via {service}")
+                return
+        except subprocess.TimeoutExpired:
+            print("ERROR: Messages.app timed out", file=sys.stderr)
+            sys.exit(1)
+
+    print(f"ERROR: Could not send via iMessage or SMS. {result.stderr.strip()}", file=sys.stderr)
+    sys.exit(1)
 
 
 def main():

@@ -118,7 +118,7 @@ fi
 PLIST="$HOME/Library/LaunchAgents/ai.openclaw.gateway.plist"
 if [ -f "$PLIST" ] && [ -f "$REPO_DIR/.env" ]; then
     echo "Injecting API keys into LaunchAgent plist..."
-    for VAR in OPENAI_API_KEY GEMINI_API_KEY GMAIL_USER GMAIL_APP_PASSWORD ALPHA_VANTAGE_KEY TZ; do
+    for VAR in OPENAI_API_KEY GOOGLE_API_KEY GEMINI_API_KEY GMAIL_USER GMAIL_APP_PASSWORD YAHOO_USER YAHOO_APP_PASSWORD ALPHA_VANTAGE_KEY HUGGING_FACE_TOKEN VAPI_API_KEY VAPI_ASSISTANT_ID VAPI_PHONE_NUMBER_ID VAPI_PHONE_NUMBER TZ; do
         VAL="${!VAR}"
         if [ -n "$VAL" ]; then
             /usr/libexec/PlistBuddy -c "Delete :EnvironmentVariables:$VAR" "$PLIST" 2>/dev/null || true

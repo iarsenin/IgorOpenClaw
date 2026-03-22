@@ -8,7 +8,7 @@ Usage:
     whatsapp.py read <number> [--limit N] [--days N]  Read messages with contact
     whatsapp.py search <query> [--limit N] [--days N] Search message text
 
-Sending is done via `openclaw message send`, NOT this script.
+Sending is done via the built-in `send_message` tool, NOT this script.
 """
 
 import json
@@ -16,10 +16,11 @@ import glob
 import sys
 import os
 from datetime import datetime, timezone, timedelta
+from zoneinfo import ZoneInfo
 from collections import defaultdict
 
 LOG_DIR = "/tmp/openclaw"
-ET = timezone(timedelta(hours=-4))
+ET = ZoneInfo("America/New_York")
 OWNER = "+19179752041"
 
 

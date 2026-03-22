@@ -199,9 +199,15 @@ def _load_seen():
     return set()
 
 
+MAX_SEEN = 200
+
+
 def _save_seen(seen):
+    entries = sorted(seen)
+    if len(entries) > MAX_SEEN:
+        entries = entries[-MAX_SEEN:]
     with open(SEEN_FILE, "w") as f:
-        for cid in sorted(seen):
+        for cid in entries:
             f.write(cid + "\n")
 
 

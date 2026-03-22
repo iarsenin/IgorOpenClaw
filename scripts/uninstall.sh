@@ -16,13 +16,19 @@ if command -v openclaw &>/dev/null; then
     openclaw gateway stop 2>/dev/null || true
 fi
 
-# --- Remove symlinks (only if they are symlinks, not real files) ---
-for LINK in "$OPENCLAW_DIR/openclaw.json" "$OPENCLAW_DIR/workspace" "$OPENCLAW_DIR/cron/jobs.json"; do
+# --- Remove symlinks ---
+for LINK in "$OPENCLAW_DIR/workspace" "$OPENCLAW_DIR/cron/jobs.json"; do
     if [ -L "$LINK" ]; then
         rm "$LINK"
         echo "Removed symlink: $LINK"
     fi
 done
+
+# --- Remove generated config (created by setup.sh cp, not a symlink) ---
+if [ -f "$OPENCLAW_DIR/openclaw.json" ] && [ ! -L "$OPENCLAW_DIR/openclaw.json" ]; then
+    rm "$OPENCLAW_DIR/openclaw.json"
+    echo "Removed generated config: $OPENCLAW_DIR/openclaw.json"
+fi
 
 echo ""
 echo "=== Uninstall Complete ==="
