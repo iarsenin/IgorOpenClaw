@@ -107,6 +107,8 @@ Keep this section updated after every change session.
     node-connect
   - Newly added: gog (Google Workspace), himalaya (email IMAP/SMTP),
     apple-reminders (remindctl)
+- **iMessage/SMS:** scripts/imessage.py (reads chat.db, sends via AppleScript).
+  Requires Full Disk Access for node binary. Read=autonomous, send=ask user.
 - **Email:** himalaya CLI (IMAP/SMTP with Gmail app password) + gog gmail (OAuth)
 - **Calendar/Drive/Contacts:** gog CLI (OAuth, project polar-city-407401)
 - **GitHub:** https://github.com/iarsenin/IgorOpenClaw (private)

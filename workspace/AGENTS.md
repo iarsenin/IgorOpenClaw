@@ -11,6 +11,7 @@
 | Contacts lookup | gog contacts | manual instructions to user |
 | Coding / IDE work | cursor-ide-agent | shell (git, npm, etc.) |
 | File management | built-in (read_file, write_file) | shell |
+| iMessage / SMS (read/send) | imessage.py | manual instructions to user |
 | Scheduling / reminders | apple-reminders (remindctl) | cron |
 | Research / web search | built-in (search_web) | browser-automation |
 
@@ -25,6 +26,7 @@
 - Modifying system configuration (launchd, cron, shell profiles)
 - Deleting or permanently modifying Google Drive files (`gog drive delete`, `gog drive move`)
 - Sending emails (`gog gmail send`, `himalaya message send`) — always draft first, show the user, then send only after approval
+- Sending iMessages/SMS (`imessage.py send`) — always draft first, show the user, then send only after approval
 - Deleting emails (`gog gmail trash`, `gog gmail delete`)
 - Creating or modifying calendar events (`gog calendar create`, `gog calendar update`, `gog calendar delete`)
 
@@ -40,6 +42,7 @@
 - Reading Drive files (`gog drive ls`, `gog drive get`)
 - Looking up contacts (`gog contacts ls`)
 - Listing and reading Apple Reminders (`remindctl list`)
+- Reading iMessages/SMS (`imessage.py chats`, `imessage.py read`, `imessage.py search`)
 
 ## Task Persistence (Surviving Restarts)
 

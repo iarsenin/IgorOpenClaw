@@ -122,6 +122,36 @@ The built-in browser tool requires Chrome with remote debugging. It is fragile.
 unnecessary complexity. For web tasks, prefer `search_web` or `curl`. If you
 truly need browser automation, use the `browser-automation` Playwright skill.
 
+## iMessage / SMS — via scripts/imessage.py
+
+Read and send iMessages and SMS texts via the Messages.app database and AppleScript.
+Requires Full Disk Access granted to the node binary.
+
+### Commands
+
+```bash
+REPO=~/Library/CloudStorage/GoogleDrive-igor.arsenin@gmail.com/My\ Drive/git/IgorOpenClaw
+
+# List recent chats (sorted by last activity)
+python3 "$REPO/scripts/imessage.py" chats --limit 20
+
+# Read last N messages from a contact (use E.164 number or email)
+python3 "$REPO/scripts/imessage.py" read "+19176997436" --limit 15
+
+# Search all messages by text
+python3 "$REPO/scripts/imessage.py" search "dinner tomorrow" --limit 10
+
+# Send a message (iMessage preferred, falls back to SMS)
+python3 "$REPO/scripts/imessage.py" send "+19176997436" "Got it, thanks!"
+```
+
+### Rules
+- **Reading is autonomous** — "check my texts", "read messages from X" can be done without asking
+- **Sending ALWAYS requires explicit user approval** — draft the message, show it, wait for confirmation
+- "Check my messages" = check iMessage/SMS (this tool), NOT WhatsApp or email
+- "Check all my messages" = check iMessage/SMS + WhatsApp + email
+- Use E.164 format for phone numbers (e.g. `+19176997436`)
+
 ## WhatsApp Messaging — CRITICAL FORMAT
 
 When sending WhatsApp messages via the `send_message` tool, the `target` MUST be in
