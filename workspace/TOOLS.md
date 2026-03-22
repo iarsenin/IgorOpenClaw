@@ -396,7 +396,7 @@ callback YES/NO lines after Igor approves.
 | `VAPI_PHONE_NUMBER_ID` | Vapi phone number ID (+19179628631) |
 | `VAPI_PHONE_NUMBER` | The actual phone number (for display) |
 | `OPENAI_ADMIN_KEY` | Org-level admin key (Usage+Billing **Read** only) — used by `api-spend-check` cron to fetch daily OpenAI costs. Create at [platform.openai.com/settings/organization/api-keys](https://platform.openai.com/settings/organization/api-keys); restrict scopes to Usage=Read, Billing=Read. |
-| Cursor token | Not a `.env` var — read at runtime from `~/Library/Application Support/Cursor/User/globalStorage/state.vscdb` key `cursorAuth/accessToken` (refreshed automatically when Cursor is open). Used by `api-spend-check` to fetch plan status and request counts from `api2.cursor.sh`. |
+| Cursor token | Not a `.env` var — read at runtime from `~/Library/Application Support/Cursor/User/globalStorage/state.vscdb` key `cursorAuth/accessToken` (refreshed automatically when Cursor is open). Used by `api-spend-check` to fetch plan/subscription status from `api2.cursor.sh/auth/full_stripe_profile`. **Cursor usage-based top-up charges are Stripe usage records not exposed by the API** — must be checked manually at https://cursor.com/settings. |
 
 ### Troubleshooting
 
