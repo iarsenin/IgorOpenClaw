@@ -261,6 +261,27 @@ python3 "$REPO/scripts/vapi-call.py" inbound-check
    - Recording URL
 7. Clawd summarizes the result for the user
 
+### CRITICAL: Riley is a separate AI with NO shared context
+
+Riley is a standalone Vapi voice agent. She does NOT have access to:
+- Clawd's conversation history or chat context
+- MEMORY.md, TOOLS.md, or any workspace files
+- Any prior calls or their transcripts
+- The user's recent messages or requests
+
+Riley only knows:
+- Her base system prompt (Igor's name, location 10011, availability Tue/Fri,
+  negotiation rules, spam handling)
+- The `task_instructions` string you pass in the call command
+
+**You MUST include ALL relevant details in the task_instructions.** Be specific:
+
+BAD:  `"Call about the fridge repair"`
+GOOD: `"Call ABC Appliance Repair to schedule a fridge repair estimate. The fridge is a Samsung French Door, model RF28R7351SR, it stopped cooling yesterday. Igor is available Tuesday or Friday afternoon. Ask for a free in-home estimate. If they quote a price for the visit, note it but don't commit."`
+
+Include: business name, what's needed, relevant details (model numbers, dates,
+prior conversations), Igor's constraints, and what outcome you want.
+
 ### How inbound calls work
 
 1. Someone dials +1 (917) 962-8631
