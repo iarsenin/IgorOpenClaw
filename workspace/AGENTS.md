@@ -46,6 +46,7 @@
 - Listing and reading Apple Reminders (`remindctl list`)
 - Reading iMessages/SMS (`imessage.py chats`, `imessage.py read`, `imessage.py search`)
 - Reading WhatsApp history (`whatsapp.py chats`, `whatsapp.py read`, `whatsapp.py search`)
+- Checking for inbound phone calls (`vapi-call.py inbound-check`) and retrieving call transcripts (`vapi-call.py status`)
 
 ## Task Persistence (Surviving Restarts)
 

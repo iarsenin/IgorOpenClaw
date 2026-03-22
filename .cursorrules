@@ -14,7 +14,8 @@ contains:
   `~/.openclaw/openclaw.json` — the generated file is git-ignored)
 - `workspace/` — OpenClaw agent workspace files (AGENTS.md, SOUL.md, etc.),
   symlinked into `~/.openclaw/workspace/`
-- `scripts/` — setup and teardown helpers
+- `scripts/` — setup, teardown, and integration helpers (imessage.py, whatsapp.py,
+  vapi-call.py, setup.sh, uninstall.sh)
 - `SETUP_GUIDE.md` — full installation walkthrough
 
 ## Critical rules
@@ -110,8 +111,14 @@ Keep this section updated after every change session.
     apple-reminders (remindctl)
 - **iMessage/SMS:** scripts/imessage.py (reads chat.db, sends via AppleScript).
   Requires Full Disk Access for node binary. Read=autonomous, send=ask user.
-- **Phone calls:** scripts/vapi-call.py (outbound via Vapi AI, +19179628631).
-  Always ask user before dialing. Cost ~11¢/min.
+- **Phone calls:** scripts/vapi-call.py (outbound + inbound via Vapi AI).
+  Voice agent "Riley" (assistant ID in VAPI_ASSISTANT_ID env var).
+  Outbound number: +19179628631. Fallback: +19179752041 (Igor's cell).
+  Always ask user before dialing outbound. Cost ~11¢/min.
+  Inbound calls auto-answered by Riley (takes messages, blocks spam).
+  Inbound polling: cron every 30 min → vapi-call.py inbound-check → WhatsApp alert.
+  Riley's system prompt is managed via Vapi API (PATCH /assistant/{id}), not in this repo.
+  See TOOLS.md § Phone Calls for full architecture and troubleshooting.
 - **Email:** himalaya CLI (IMAP/SMTP with Gmail app password) + gog gmail (OAuth)
 - **Calendar/Drive/Contacts:** gog CLI (OAuth, project polar-city-407401)
 - **GitHub:** https://github.com/iarsenin/IgorOpenClaw (private)

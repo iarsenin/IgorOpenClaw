@@ -29,12 +29,17 @@ The agent acts on its owner's behalf — browsing the web, managing email, runni
                     │   API    │    │     API       │   │ (browser,│
                     └──────────┘    └──────────────┘   │  email,  │
                                                        │  cursor) │
-                                                       └──────────┘
+                    ┌──────────┐                       └──────────┘
+                    │ Vapi AI  │ ← Phone calls
+                    │(+1 917-  │   (outbound + inbound)
+                    │ 962-8631)│
+                    └──────────┘
 ```
 
 - **Mac Mini M2** (8 GB RAM, Apple Silicon) — runs the agent natively
 - **OpenClaw Gateway** — always-on daemon managed by launchd
 - **LLMs via API** — no local models (hardware too constrained); OpenAI as primary, Gemini as fallback
+- **Vapi AI** — outbound and inbound phone calls via AI voice agent "Riley" (+19179628631)
 - **Skills (17 ready)** — browser automation, Gmail/Calendar/Drive (gog OAuth),
   email triage (himalaya IMAP), Apple Reminders, GitHub, coding-agent, and more
 
@@ -110,4 +115,6 @@ Agent workspace files (`workspace/*.md`) take effect on the next agent turn with
 - Agent requires user approval before irreversible actions (purchases, deletions, public posts)
 - Browser sessions always cleaned up (`browser close`) to prevent resource leaks
 - Ongoing tasks persisted to MEMORY.md with TTL (7-day default) and 48h staleness detection
+- Phone calls require explicit user approval before dialing; Riley (voice agent) never commits to payments
+- Inbound calls answered by AI; messages relayed to owner via WhatsApp
 - See the Security Hardening section in [SETUP_GUIDE.md](SETUP_GUIDE.md) for the full checklist

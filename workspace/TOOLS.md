@@ -208,18 +208,34 @@ You CANNOT browse the WhatsApp chat list or contacts — this is a bridge limita
 
 ## Phone Calls — via Vapi AI (scripts/vapi-call.py)
 
-Make outbound phone calls using Vapi AI voice agent. Clawd provides
-task-specific instructions, Vapi handles the conversation, and returns
-a transcript and structured report.
+Make and receive phone calls using a Vapi AI voice agent named "Riley."
+For outbound calls, Clawd provides task-specific instructions per call;
+Vapi handles the live conversation and returns a transcript + structured report.
+Inbound calls are answered by Riley automatically (takes a message for Igor).
 
-**Outbound number:** +1 (917) 962-8631
+### Architecture
+
+```
+Outbound:  Clawd → vapi-call.py → Vapi REST API → Riley (voice agent) → recipient
+Inbound:   caller → +19179628631 → Vapi → Riley answers, takes message
+Polling:   cron (every 30 min) → vapi-call.py inbound-check → WhatsApp alert
+```
+
+- **Vapi account:** dashboard.vapi.ai (Igor's account)
+- **Assistant name:** Riley (ID in env var `VAPI_ASSISTANT_ID`)
+- **Phone number:** +1 (917) 962-8631 (ID in env var `VAPI_PHONE_NUMBER_ID`)
+- **Fallback destination:** +19179752041 (Igor's cell — transfers if Riley is unavailable)
+- **Model:** OpenAI gpt-4o (managed by Vapi, not our API key)
+- **Cost:** ~11 cents/minute
+- **System prompt:** managed via Vapi API (PATCH /assistant/{id}), NOT stored in this repo.
+  Covers outbound task execution + inbound message-taking + spam blocking.
 
 ### Commands
 
 ```bash
 REPO=~/Library/CloudStorage/GoogleDrive-igor.arsenin@gmail.com/My\ Drive/git/IgorOpenClaw
 
-# Make a call (ALWAYS requires user approval first)
+# Make an outbound call (ALWAYS requires user approval first)
 python3 "$REPO/scripts/vapi-call.py" call "+12125551234" "Schedule a fridge repair estimate for Tuesday. Ask for a free estimate."
 
 # Check call status and get transcript
@@ -227,15 +243,59 @@ python3 "$REPO/scripts/vapi-call.py" status <call_id>
 
 # List recent calls
 python3 "$REPO/scripts/vapi-call.py" list --limit 10
+
+# Check for new inbound calls (used by cron job, can also run manually)
+python3 "$REPO/scripts/vapi-call.py" inbound-check
 ```
 
+### How outbound calls work
+
+1. Clawd receives a task requiring a phone call (e.g. "call the plumber")
+2. Clawd drafts a call plan: who, why, what to say — presents to user for approval
+3. On approval, Clawd runs `vapi-call.py call <number> <instructions>`
+4. The script POSTs to Vapi API with `assistantOverrides` containing the task
+5. Vapi places the call via Riley, who follows her system prompt + task instructions
+6. After the call ends, Clawd runs `vapi-call.py status <call_id>` to retrieve:
+   - Transcript (full conversation)
+   - Structured report (summary, outcome, follow-ups)
+   - Recording URL
+7. Clawd summarizes the result for the user
+
+### How inbound calls work
+
+1. Someone dials +1 (917) 962-8631
+2. Vapi routes the call to Riley (assigned as inbound assistant in Vapi dashboard)
+3. Riley answers: "Hello, this is Riley, Igor Arsenin's assistant. How can I help you?"
+4. Riley takes a message: asks who's calling, what it's about, callback number, urgency
+5. Riley blocks spam/telemarketers
+6. Every 30 minutes, the `inbound-call-check` cron job runs `vapi-call.py inbound-check`
+7. If new inbound calls are found, Clawd sends Igor a WhatsApp summary
+8. Seen calls are tracked in `.vapi-seen-calls` (git-ignored) to avoid duplicate alerts
+
 ### Rules
-- **ALWAYS requires explicit user approval before dialing** — describe who you're calling, why, and what you'll say. Wait for confirmation.
-- After the call, retrieve the transcript and structured report, then summarize for the user
+- **Outbound calls ALWAYS require explicit user approval** — describe who you're calling, why, and what you'll say. Wait for confirmation.
+- **Inbound call checking is autonomous** — the cron job runs automatically
+- After any call, retrieve the transcript and structured report, then summarize for the user
 - Never make calls during quiet hours (11 PM – 7 AM ET) unless explicitly asked
-- The Vapi assistant cannot commit to payments or final decisions — it will defer to Igor
+- Riley cannot commit to payments or final decisions — she defers to Igor
 - Cost is ~11 cents/minute — mention this if the user asks about a long call
 - If a call fails or goes to voicemail, report the outcome and ask about next steps
+
+### Environment variables (in .env and launchd plist)
+
+| Variable | Purpose |
+|----------|---------|
+| `VAPI_API_KEY` | Private API key for Vapi REST API |
+| `VAPI_ASSISTANT_ID` | Riley assistant ID |
+| `VAPI_PHONE_NUMBER_ID` | Vapi phone number ID (+19179628631) |
+| `VAPI_PHONE_NUMBER` | The actual phone number (for display) |
+
+### Troubleshooting
+
+- **SSL errors:** macOS Python 3.10 may lack certificates. The script auto-falls back to unverified SSL. Install `certifi` (`pip3 install certifi`) for proper verification.
+- **403 / Cloudflare errors:** The script uses `User-Agent: OpenClaw/1.0` to avoid blocks. If Vapi changes their WAF rules, update the User-Agent header.
+- **Call not connecting:** Check `vapi-call.py status <call_id>` for `endedReason`. Common: `customer-did-not-answer`, `customer-busy`.
+- **Changing Riley's behavior:** Update the system prompt via Vapi API (PATCH to `/assistant/{VAPI_ASSISTANT_ID}`). Do NOT edit it in the Vapi dashboard — the API is the source of truth.
 
 ## Built-in Tools
 

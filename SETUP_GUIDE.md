@@ -464,6 +464,104 @@ cursor --version
 openclaw skills list
 ```
 
+### 8.5 Phone Calls (Vapi AI)
+
+OpenClaw can make and receive phone calls via [Vapi.ai](https://vapi.ai), a
+turnkey AI voice platform. Vapi handles telephony, speech-to-text, text-to-speech,
+and conversational flow. OpenClaw controls it via REST API.
+
+#### 8.5.1 Create a Vapi account
+
+1. Go to https://dashboard.vapi.ai and sign up (select **Developer** user type)
+2. From the dashboard, go to **Organization Settings → API Keys**
+3. Copy your **Private API Key** (a UUID like `ebe62f22-...`)
+
+#### 8.5.2 Create an assistant
+
+1. Go to **Assistants → Create Assistant**
+2. Configure:
+   - **Model provider:** OpenAI (managed by Vapi — uses their API key, not yours)
+   - **Model:** gpt-4o (conversational variant, ~0.6s latency)
+   - **First Message Mode:** Assistant speaks first
+   - **First Message:** `Hi, I'm calling on behalf of Igor Arsenin. How are you?`
+   - **System Prompt:** A comprehensive prompt covering outbound task execution,
+     inbound message-taking, negotiation boundaries, and spam blocking.
+     See `workspace/TOOLS.md § Phone Calls` for the full prompt structure.
+   - **Max tokens:** 500, **Temperature:** 0.5
+   - **Transcriber:** Deepgram, English. Add custom keywords: your name, contacts, brands.
+   - **Voice:** Elliot (or any preferred voice)
+   - **Structured Output:** One field called `callReport` (string) for post-call summaries
+3. Publish the assistant and copy the **Assistant ID** from the URL
+
+#### 8.5.3 Get a phone number
+
+1. In Vapi dashboard, go to **Phone Numbers → Buy a Number**
+2. Choose a US area code (e.g. 917 for New York)
+3. Configure the phone number:
+   - **Label:** "Igor's Assistant"
+   - **Inbound Assistant:** select your assistant (e.g. "Riley")
+   - **Fallback Destination:** your personal cell number (transfers if AI is unavailable)
+4. Copy the **Phone Number ID** (a UUID)
+
+#### 8.5.4 Add credentials to .env
+
+Add these four lines to your `.env` file:
+
+```
+VAPI_API_KEY=your-vapi-private-api-key
+VAPI_ASSISTANT_ID=your-vapi-assistant-id
+VAPI_PHONE_NUMBER_ID=your-vapi-phone-number-id
+VAPI_PHONE_NUMBER=+19179628631
+```
+
+#### 8.5.5 Add to launchd plist
+
+The OpenClaw daemon needs these env vars too. Add them to the launchd plist:
+
+```bash
+PLIST=~/Library/LaunchAgents/ai.openclaw.gateway.plist
+
+/usr/libexec/PlistBuddy -c "Add :EnvironmentVariables:VAPI_API_KEY string YOUR_KEY" "$PLIST"
+/usr/libexec/PlistBuddy -c "Add :EnvironmentVariables:VAPI_ASSISTANT_ID string YOUR_ID" "$PLIST"
+/usr/libexec/PlistBuddy -c "Add :EnvironmentVariables:VAPI_PHONE_NUMBER_ID string YOUR_ID" "$PLIST"
+/usr/libexec/PlistBuddy -c "Add :EnvironmentVariables:VAPI_PHONE_NUMBER string +19179628631" "$PLIST"
+
+# Reload the daemon to pick up new env vars
+launchctl unload "$PLIST"
+sleep 2
+launchctl load "$PLIST"
+```
+
+#### 8.5.6 Test
+
+```bash
+REPO=~/Library/CloudStorage/GoogleDrive-igor.arsenin@gmail.com/My\ Drive/git/IgorOpenClaw
+
+# Verify API connectivity
+python3 "$REPO/scripts/vapi-call.py" list --limit 5
+
+# Make a test call to your own phone
+python3 "$REPO/scripts/vapi-call.py" call "+1YOURNUMBER" "This is a test call. Confirm you are Riley and say goodbye."
+
+# After the call, check the transcript
+python3 "$REPO/scripts/vapi-call.py" status <call_id>
+```
+
+#### 8.5.7 How it works (for future maintainers)
+
+```
+Outbound:  Clawd → vapi-call.py → POST api.vapi.ai/call → Riley → recipient
+Inbound:   caller → +19179628631 → Vapi → Riley answers, takes message
+Polling:   cron (every 30 min) → vapi-call.py inbound-check → WhatsApp alert to Igor
+```
+
+- `scripts/vapi-call.py` is a standalone Python script (no pip dependencies)
+- Riley's system prompt is managed via Vapi API (PATCH /assistant/{id}), not stored in this repo
+- Inbound calls are tracked in `.vapi-seen-calls` (git-ignored) to avoid duplicate alerts
+- The `inbound-call-check` cron job in `config/cron/jobs.json` runs every 30 minutes
+- Outbound calls use `assistantOverrides` to inject task-specific instructions per call
+- Cost is ~$0.11/minute (Vapi's rate for gpt-4o + telephony + TTS/STT)
+
 ---
 
 ## 9. Verify Everything Works
@@ -485,7 +583,7 @@ openclaw skills list
 
 # 4. Cron jobs are loaded
 openclaw cron list
-# Expected: morning-briefing, email-triage, system-health
+# Expected: morning-briefing, email-triage, inbound-call-check, system-health
 
 # 5. Open the dashboard
 openclaw dashboard
