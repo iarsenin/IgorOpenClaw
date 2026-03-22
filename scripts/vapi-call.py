@@ -80,11 +80,15 @@ def cmd_call(number, task_instructions):
     if not number.startswith("+"):
         number = f"+1{number}" if len(number) == 10 else f"+{number}"
 
+    first_sentence = task_instructions.split(".")[0].strip()
+
     payload = {
         "assistantId": assistant_id,
         "assistantOverrides": {
-            "firstMessage": f"Hi, I'm calling on behalf of Igor Arsenin. {task_instructions.split('.')[0]}.",
+            "firstMessage": f"Hi, I'm calling on behalf of Igor Arsenin. {first_sentence}.",
             "model": {
+                "provider": "openai",
+                "model": "gpt-4o",
                 "messages": [
                     {
                         "role": "system",
