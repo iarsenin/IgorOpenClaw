@@ -43,6 +43,7 @@
 - Looking up contacts (`gog contacts ls`)
 - Listing and reading Apple Reminders (`remindctl list`)
 - Reading iMessages/SMS (`imessage.py chats`, `imessage.py read`, `imessage.py search`)
+- Reading WhatsApp history (`whatsapp.py chats`, `whatsapp.py read`, `whatsapp.py search`)
 
 ## Task Persistence (Surviving Restarts)
 

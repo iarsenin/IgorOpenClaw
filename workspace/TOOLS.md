@@ -160,6 +160,33 @@ python3 "$REPO/scripts/imessage.py" send "+19176997436" "Got it, thanks!"
 - "Check all my messages" = check iMessage/SMS + WhatsApp + email
 - Use E.164 format for phone numbers (e.g. `+19176997436`)
 
+## WhatsApp Message History — via scripts/whatsapp.py
+
+Read WhatsApp chat history from OpenClaw gateway logs. Covers messages
+from the past 7 days by default (adjustable with `--days`).
+
+### Commands
+
+```bash
+REPO=~/Library/CloudStorage/GoogleDrive-igor.arsenin@gmail.com/My\ Drive/git/IgorOpenClaw
+
+# List recent WhatsApp chats
+python3 "$REPO/scripts/whatsapp.py" chats --limit 20
+
+# Read messages with a specific contact
+python3 "$REPO/scripts/whatsapp.py" read "+19176997436" --limit 20
+
+# Search WhatsApp messages
+python3 "$REPO/scripts/whatsapp.py" search "meeting tomorrow" --limit 10
+```
+
+### Rules
+- **Reading is autonomous** — "check my WhatsApp", "what did X say" can be done without asking
+- **Sending ALWAYS requires explicit user approval** — use `openclaw message send` only after showing draft
+- Only covers messages since the gateway started logging (not full WhatsApp history)
+- "Check my messages" = iMessage/SMS; "Check my WhatsApp" = this tool
+- "Check all my messages" = iMessage/SMS + WhatsApp + email
+
 ## WhatsApp Messaging — CRITICAL FORMAT
 
 When sending WhatsApp messages via the `send_message` tool, the `target` MUST be in
