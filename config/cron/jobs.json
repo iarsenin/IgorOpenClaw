@@ -2,6 +2,20 @@
   "version": 1,
   "jobs": [
     {
+      "id": "post-restart-resume",
+      "name": "Post-Restart Resume",
+      "description": "Immediately after the 4 AM restart, check MEMORY.md for active tasks and resume them",
+      "schedule": {
+        "kind": "cron",
+        "expr": "5 4 * * *"
+      },
+      "timezone": "America/New_York",
+      "enabled": true,
+      "sessionTarget": "isolated",
+      "wakeMode": "now",
+      "prompt": "Gateway just restarted. Follow AGENTS.md § Task Persistence → On startup: read MEMORY.md Active Tasks, resume active ones, skip paused. Respect quiet hours."
+    },
+    {
       "id": "morning-briefing",
       "name": "Morning Briefing",
       "description": "Daily morning summary of emails, tasks, and overnight events",
@@ -13,7 +27,7 @@
       "enabled": true,
       "sessionTarget": "isolated",
       "wakeMode": "now",
-      "prompt": "Run the morning briefing: summarize unread emails, list today's scheduled tasks, and report any overnight errors. Send the summary to me via WhatsApp."
+      "prompt": "Morning briefing: summarize unread emails (both Gmail and Yahoo), list today's calendar events, report any overnight errors, and include status of any active tasks from MEMORY.md. Send via WhatsApp."
     },
     {
       "id": "email-triage",
@@ -27,7 +41,7 @@
       "enabled": true,
       "sessionTarget": "isolated",
       "wakeMode": "now",
-      "prompt": "Check my email inbox for new messages. Flag anything urgent and draft replies for routine messages. Only notify me if there's something that needs my attention."
+      "prompt": "Check email on both Gmail and Yahoo (see TOOLS.md § Email Access). Flag urgent messages, draft routine replies. Only notify user if something needs attention."
     },
     {
       "id": "system-health",

@@ -56,8 +56,8 @@ IgorOpenClaw/
 │   ├── SOUL.md            ← Agent personality and communication style
 │   ├── USER.md            ← User context (timezone, preferences, accounts)
 │   ├── TOOLS.md           ← Available tools and environment notes
-│   ├── MEMORY.md          ← Agent-maintained learned patterns
-│   └── HEARTBEAT.md       ← Proactive scheduled tasks
+│   ├── MEMORY.md          ← Agent persistent state (active tasks, completed log, learned patterns)
+│   └── HEARTBEAT.md       ← Proactive behavior guidelines (references cron/jobs.json)
 └── scripts/
     ├── setup.sh           ← One-command bootstrap (symlinks, dirs, daemon install)
     └── uninstall.sh       ← Teardown (remove symlinks, stop daemon)
@@ -105,4 +105,6 @@ Agent workspace files (`workspace/*.md`) take effect on the next agent turn with
 - All secrets in `.env` (git-ignored, `chmod 600`)
 - Comprehensive action logging enabled
 - Agent requires user approval before irreversible actions (purchases, deletions, public posts)
+- Browser sessions always cleaned up (`browser close`) to prevent resource leaks
+- Ongoing tasks persisted to MEMORY.md with TTL (7-day default) and 48h staleness detection
 - See the Security Hardening section in [SETUP_GUIDE.md](SETUP_GUIDE.md) for the full checklist

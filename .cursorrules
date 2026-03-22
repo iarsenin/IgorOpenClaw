@@ -40,8 +40,10 @@ contains:
 - `workspace/SOUL.md` — agent personality and tone
 - `workspace/USER.md` — user context (timezone, preferences)
 - `workspace/TOOLS.md` — available tools and environment notes
-- `workspace/MEMORY.md` — agent-maintained learned patterns
-- `workspace/HEARTBEAT.md` — proactive scheduled task definitions
+- `workspace/MEMORY.md` — agent persistent state (active tasks, completed log,
+  learned patterns, corrections)
+- `workspace/HEARTBEAT.md` — proactive behavior guidelines (references
+  config/cron/jobs.json for schedules)
 - `.env.example` — template for required environment variables
 
 ## After every change session
@@ -93,8 +95,11 @@ Keep this section updated after every change session.
 - **Browser:** dedicated Chrome debug profile at ~/.openclaw/chrome-profile/ (port 9222)
 - **Daily restart:** 4 AM ET via launchd (ai.openclaw.daily-restart), restarts
   Chrome debug profile + gateway
-- **Cron jobs:** morning briefing (7:30 AM), email triage (every 2h 8AM-10PM),
-  system health (every 6h)
+- **Cron jobs:** post-restart-resume (4:05 AM), morning briefing (7:30 AM),
+  email triage (every 2h 8AM-10PM), system health (every 6h)
+- **Task persistence:** ongoing tasks written to MEMORY.md → Active Tasks with
+  TTL (default 7 days), explicit done-when criteria, 48h staleness rule.
+  See AGENTS.md § Task Persistence for full rules.
 - **Skills installed (17 ready):**
   - ClawHub: browser-automation, screenshot
   - Bundled: coding-agent, gemini, github, gh-issues, peekaboo, summarize,

@@ -106,7 +106,16 @@ himalaya message reply --account yahoo <ID>
 - When replying, use the account that received the original email
 - NEVER send without showing the draft to the user first
 
-## Browser Tool Limitations
+## Browser Rules
+
+**Always run `browser close` when done with a browser task.** Every browser
+session must end with cleanup — no exceptions. Leaving tabs open wastes memory
+and blocks the Chrome debug port for future tasks.
+
+Pattern for every browser task:
+1. `browser navigate <url>`
+2. Do your work (act, extract, screenshot, etc.)
+3. `browser close` — **mandatory final step**
 
 The built-in browser tool requires Chrome with remote debugging. It is fragile.
 **Do NOT suggest the Browser Relay extension** — it is not installed and adds

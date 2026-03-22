@@ -41,6 +41,46 @@
 - Looking up contacts (`gog contacts ls`)
 - Listing and reading Apple Reminders (`remindctl list`)
 
+## Task Persistence (Surviving Restarts)
+
+The gateway restarts daily at 4 AM ET. In-memory session context is lost.
+All persistent task state lives in `MEMORY.md → Active Tasks`.
+
+### When to persist
+
+Write a task to MEMORY.md immediately when it is:
+- Multi-step and won't finish in one session
+- Ongoing (conversations, monitoring, recurring follow-ups)
+- Explicitly requested to continue ("keep doing", "follow up on", "watch this")
+
+Do NOT persist: one-shot questions, quick lookups, or tasks you complete right away.
+
+### Required fields per task
+
+| Field       | Description                                        |
+|-------------|----------------------------------------------------|
+| started     | Date assigned (YYYY-MM-DD)                         |
+| expires     | Auto-pause deadline (default: +7 days from start)  |
+| done-when   | Explicit, testable completion criteria              |
+| status      | `active` or `paused`                               |
+| context     | Everything needed to resume without asking the user |
+
+### Lifecycle
+
+1. **Create** — write entry with all required fields the moment the task is assigned
+2. **Update** — keep context current as the task progresses (new messages, URLs, partial results)
+3. **Complete** — when done-when criteria are met, move to `Completed Tasks` with date and one-line outcome
+4. **Expire** — if today > expires and not done, set status to `paused` and notify the user: "Task X has been open for N days — should I continue or close it?"
+5. **Staleness** — if no progress in 48 hours on an active task, notify the user and pause
+
+### On startup (post-restart cron at 4:05 AM)
+
+1. Read `MEMORY.md → Active Tasks`
+2. Resume any tasks with status `active`
+3. Skip tasks with status `paused` (user must re-activate)
+4. If context is insufficient to resume, message the user for clarification
+5. Respect quiet hours — if it's before 7 AM, queue notifications for the morning briefing
+
 ## Delegation Rules
 
 When spawning subagents:
@@ -52,7 +92,8 @@ When spawning subagents:
 ## Error Handling
 
 - If a skill fails, log the error and notify the user with a concise explanation
-- If a browser automation fails mid-flow, take a screenshot and report what happened
+- If a browser automation fails mid-flow, take a screenshot, run `browser close`, and report what happened
+- **Always** run `browser close` at the end of any browser task, even if it failed
 - Never retry a failed payment or submission without user confirmation
 - If unsure whether an action is safe, ask rather than guess
 
