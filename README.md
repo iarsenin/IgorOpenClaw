@@ -9,7 +9,7 @@ This repository is the single source of truth for an OpenClaw agent that:
 - Runs 24/7 as a macOS LaunchAgent daemon
 - Accepts instructions via WhatsApp and executes tasks autonomously
 - Uses **OpenAI** (primary) and **Google Gemini** (fallback) as LLM providers
-- Automates browser interactions, email, iMessage/SMS, file management, and coding workflows
+- Automates browser interactions, email, iMessage/SMS, phone calls (Vapi AI), file management, and coding workflows
 - Integrates with Cursor IDE for autonomous coding and research
 
 The agent acts on its owner's behalf — browsing the web, managing email, running shell commands, and orchestrating multi-step workflows — while requiring explicit approval before irreversible actions.
@@ -61,6 +61,8 @@ IgorOpenClaw/
 └── scripts/
     ├── setup.sh           ← One-command bootstrap (symlinks, dirs, daemon install)
     ├── imessage.py        ← iMessage/SMS read & send helper (chat.db + AppleScript)
+    ├── whatsapp.py        ← WhatsApp message history reader (parses gateway logs)
+    ├── vapi-call.py       ← Outbound phone calls via Vapi AI voice agent
     └── uninstall.sh       ← Teardown (remove symlinks, stop daemon)
 ```
 

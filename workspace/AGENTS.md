@@ -13,6 +13,7 @@
 | File management | built-in (read_file, write_file) | shell |
 | iMessage / SMS (read/send) | imessage.py | manual instructions to user |
 | Scheduling / reminders | apple-reminders (remindctl) | cron |
+| Phone calls (outbound) | vapi-call.py | manual instructions to user |
 | Research / web search | built-in (search_web) | browser-automation |
 
 ## Approval Rules
@@ -27,6 +28,7 @@
 - Deleting or permanently modifying Google Drive files (`gog drive delete`, `gog drive move`)
 - Sending emails (`gog gmail send`, `himalaya message send`) — always draft first, show the user, then send only after approval
 - Sending iMessages/SMS (`imessage.py send`) — always draft first, show the user, then send only after approval
+- Making phone calls (`vapi-call.py call`) — always describe the call plan (who, why, what to say), wait for approval before dialing
 - Deleting emails (`gog gmail trash`, `gog gmail delete`)
 - Creating or modifying calendar events (`gog calendar create`, `gog calendar update`, `gog calendar delete`)
 

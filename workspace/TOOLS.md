@@ -206,6 +206,37 @@ For group messages, use the WhatsApp group JID (e.g. `120363012345@g.us`).
 If a user asks you to message someone by name, ask for their phone number first.
 You CANNOT browse the WhatsApp chat list or contacts — this is a bridge limitation.
 
+## Phone Calls — via Vapi AI (scripts/vapi-call.py)
+
+Make outbound phone calls using Vapi AI voice agent. Clawd provides
+task-specific instructions, Vapi handles the conversation, and returns
+a transcript and structured report.
+
+**Outbound number:** +1 (917) 962-8631
+
+### Commands
+
+```bash
+REPO=~/Library/CloudStorage/GoogleDrive-igor.arsenin@gmail.com/My\ Drive/git/IgorOpenClaw
+
+# Make a call (ALWAYS requires user approval first)
+python3 "$REPO/scripts/vapi-call.py" call "+12125551234" "Schedule a fridge repair estimate for Tuesday. Ask for a free estimate."
+
+# Check call status and get transcript
+python3 "$REPO/scripts/vapi-call.py" status <call_id>
+
+# List recent calls
+python3 "$REPO/scripts/vapi-call.py" list --limit 10
+```
+
+### Rules
+- **ALWAYS requires explicit user approval before dialing** — describe who you're calling, why, and what you'll say. Wait for confirmation.
+- After the call, retrieve the transcript and structured report, then summarize for the user
+- Never make calls during quiet hours (11 PM – 7 AM ET) unless explicitly asked
+- The Vapi assistant cannot commit to payments or final decisions — it will defer to Igor
+- Cost is ~11 cents/minute — mention this if the user asks about a long call
+- If a call fails or goes to voicemail, report the outcome and ask about next steps
+
 ## Built-in Tools
 
 - execute_shell — run shell commands (safety: medium)
