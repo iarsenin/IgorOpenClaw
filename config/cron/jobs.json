@@ -44,6 +44,20 @@
       "prompt": "Check email on both Gmail and Yahoo (see TOOLS.md § Email Access). Flag urgent messages, draft routine replies. Only notify user if something needs attention."
     },
     {
+      "id": "inbound-call-check",
+      "name": "Inbound Call Check",
+      "description": "Poll Vapi for new inbound phone calls and alert user",
+      "schedule": {
+        "kind": "cron",
+        "expr": "15,45 * * * *"
+      },
+      "timezone": "America/New_York",
+      "enabled": true,
+      "sessionTarget": "isolated",
+      "wakeMode": "now",
+      "prompt": "Run: python3 ~/Library/CloudStorage/GoogleDrive-igor.arsenin@gmail.com/My\\ Drive/git/IgorOpenClaw/scripts/vapi-call.py inbound-check — If there are new inbound calls, send Igor a WhatsApp summary with: who called, when, and what they wanted (from the transcript). If no new calls, do nothing (no notification needed)."
+    },
+    {
       "id": "system-health",
       "name": "System Health",
       "description": "Periodic system and gateway health check",

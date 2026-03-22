@@ -5,6 +5,7 @@ Usage:
     vapi-call.py call <number> <task_instructions>   Make an outbound call
     vapi-call.py status <call_id>                    Check call status/transcript
     vapi-call.py list [--limit N]                    List recent calls
+    vapi-call.py inbound-check                       Check for new inbound calls (for cron)
 
 Environment variables (from .env):
     VAPI_API_KEY          Private API key
@@ -185,6 +186,77 @@ def cmd_list(limit=10):
         print(f"{cid:<40} {status:<12} {to_num:<16} {dur_str:>8}  {cost_str:>8}")
 
 
+SEEN_FILE = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+    ".vapi-seen-calls"
+)
+
+
+def _load_seen():
+    if os.path.exists(SEEN_FILE):
+        with open(SEEN_FILE) as f:
+            return set(line.strip() for line in f if line.strip())
+    return set()
+
+
+def _save_seen(seen):
+    with open(SEEN_FILE, "w") as f:
+        for cid in sorted(seen):
+            f.write(cid + "\n")
+
+
+def cmd_inbound_check():
+    """Check for new inbound calls and print summaries for unseen ones."""
+    result = api_request("GET", "/call?limit=20")
+    calls = result if isinstance(result, list) else result.get("results", result.get("data", []))
+
+    seen = _load_seen()
+    new_inbound = []
+
+    for call in calls:
+        cid = call.get("id", "")
+        call_type = call.get("type", "")
+        status = call.get("status", "")
+
+        if call_type != "inboundPhoneCall":
+            continue
+        if status not in ("ended",):
+            continue
+        if cid in seen:
+            continue
+
+        new_inbound.append(call)
+        seen.add(cid)
+
+    if not new_inbound:
+        print("No new inbound calls.")
+        _save_seen(seen)
+        return
+
+    print(f"NEW INBOUND CALLS: {len(new_inbound)}\n")
+    for call in new_inbound:
+        cid = call.get("id", "?")
+        customer = call.get("customer", {})
+        caller_num = customer.get("number", "unknown") if isinstance(customer, dict) else "unknown"
+        duration = call.get("duration")
+        analysis = call.get("analysis", {})
+        summary = analysis.get("summary", "")
+        structured = analysis.get("structuredData", {})
+
+        print(f"  Call ID: {cid}")
+        print(f"  From: {caller_num}")
+        if duration:
+            print(f"  Duration: {duration}s")
+        if summary:
+            print(f"  Summary: {summary}")
+        if structured:
+            for key, val in structured.items():
+                print(f"  {key}: {val}")
+        print()
+
+    _save_seen(seen)
+
+
 def main():
     if len(sys.argv) < 2:
         print(__doc__)
@@ -209,6 +281,8 @@ def main():
             idx = sys.argv.index("--limit")
             limit = int(sys.argv[idx + 1])
         cmd_list(limit)
+    elif cmd == "inbound-check":
+        cmd_inbound_check()
     else:
         print(f"Unknown command: {cmd}")
         print(__doc__)

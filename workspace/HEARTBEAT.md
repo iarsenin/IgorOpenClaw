@@ -18,6 +18,7 @@
 | post-restart-resume| 4:05 AM daily         | Resume active tasks after restart    |
 | morning-briefing   | 7:30 AM daily         | Emails, calendar, overnight errors   |
 | email-triage       | Every 2h, 8 AM–10 PM | Flag urgent, draft routine replies   |
+| inbound-call-check | Every 30 min          | Poll Vapi for new inbound calls      |
 | system-health      | Every 6h              | Gateway, disk, error log check       |
 
 ## Behavioral Rules
