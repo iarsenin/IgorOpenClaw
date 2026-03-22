@@ -43,6 +43,14 @@ if [ ! -f "$REPO_DIR/.env" ]; then
     echo ""
 fi
 
+# --- Source .env early so token injection below works even without pre-exported vars ---
+if [ -f "$REPO_DIR/.env" ]; then
+    set -a
+    source "$REPO_DIR/.env"
+    set +a
+    echo "Loaded environment variables from .env"
+fi
+
 # --- Create directories ---
 mkdir -p "$OPENCLAW_DIR"
 mkdir -p "$CRON_DIR"
@@ -83,14 +91,6 @@ if [ -f "$REPO_DIR/config/cron/jobs.json" ]; then
     echo "Linked: config/cron/jobs.json -> $CRON_DIR/jobs.json"
 fi
 
-# --- Source .env into current shell ---
-if [ -f "$REPO_DIR/.env" ]; then
-    set -a
-    source "$REPO_DIR/.env"
-    set +a
-    echo "Loaded environment variables from .env"
-fi
-
 # --- Install daemon if not already installed ---
 echo ""
 echo "Checking daemon status..."
@@ -118,7 +118,7 @@ fi
 PLIST="$HOME/Library/LaunchAgents/ai.openclaw.gateway.plist"
 if [ -f "$PLIST" ] && [ -f "$REPO_DIR/.env" ]; then
     echo "Injecting API keys into LaunchAgent plist..."
-    for VAR in OPENAI_API_KEY GOOGLE_API_KEY GEMINI_API_KEY GMAIL_USER GMAIL_APP_PASSWORD YAHOO_USER YAHOO_APP_PASSWORD ALPHA_VANTAGE_KEY HUGGING_FACE_TOKEN VAPI_API_KEY VAPI_ASSISTANT_ID VAPI_PHONE_NUMBER_ID VAPI_PHONE_NUMBER TZ; do
+    for VAR in OPENAI_API_KEY OPENAI_ADMIN_KEY GOOGLE_API_KEY GEMINI_API_KEY GMAIL_USER GMAIL_APP_PASSWORD YAHOO_USER YAHOO_APP_PASSWORD ALPHA_VANTAGE_KEY HUGGING_FACE_TOKEN VAPI_API_KEY VAPI_ASSISTANT_ID VAPI_PHONE_NUMBER_ID VAPI_PHONE_NUMBER TZ; do
         VAL="${!VAR}"
         if [ -n "$VAL" ]; then
             /usr/libexec/PlistBuddy -c "Delete :EnvironmentVariables:$VAR" "$PLIST" 2>/dev/null || true

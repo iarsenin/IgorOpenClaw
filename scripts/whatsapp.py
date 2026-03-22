@@ -172,10 +172,18 @@ def main():
     i = 0
     while i < len(args):
         if args[i] == "--limit" and i + 1 < len(args):
-            limit = int(args[i + 1])
+            try:
+                limit = int(args[i + 1])
+            except ValueError:
+                print(f"ERROR: --limit value must be an integer, got: {args[i + 1]}", file=sys.stderr)
+                sys.exit(1)
             i += 2
         elif args[i] == "--days" and i + 1 < len(args):
-            days = int(args[i + 1])
+            try:
+                days = int(args[i + 1])
+            except ValueError:
+                print(f"ERROR: --days value must be an integer, got: {args[i + 1]}", file=sys.stderr)
+                sys.exit(1)
             i += 2
         else:
             filtered_args.append(args[i])

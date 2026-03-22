@@ -233,11 +233,10 @@ The live gateway config is **`~/.openclaw/openclaw.json`** (generated from **`co
 The IgorOpenClaw template includes:
 
 - **Identity**: Agent named "Clawd"
-- **Models**: OpenAI `gpt-4o` as primary, Google `gemini-2.5-pro` as fallback
-- **Gateway**: Bound to `127.0.0.1:18789` (localhost only), token auth enabled
-- **WhatsApp**: Enabled with `allowFrom` phone number restriction
-- **Heartbeat**: Enabled, runs every 30 minutes
-- **Logging**: Action and tool call logging enabled
+- **Models**: OpenAI `gpt-5.4` as primary, Google `gemini-2.5-pro` as fallback
+- **Gateway**: Bound to localhost (mode: local), port 18789, token auth enabled
+- **WhatsApp**: Enabled with `allowFrom` phone number restriction, groups disabled
+- **Heartbeat / Logging**: Enabled or defaults per OpenClaw version — check `openclaw gateway status` for active settings
 
 ### 5.2 Customize the config
 
@@ -258,7 +257,7 @@ To change which models are used:
 ```json5
 agent: {
   model: {
-    primary: "openai/gpt-4o",           // or "openai/gpt-4-turbo", etc.
+    primary: "openai/gpt-5.4",            // current default in this repo
     fallbacks: ["google/gemini-2.5-pro"], // or "google/gemini-2.5-flash" for cheaper
   },
 },
@@ -312,14 +311,12 @@ channels: {
   whatsapp: {
     enabled: true,
     allowFrom: ["+1XXXXXXXXXX"],  // Your actual phone number
-    groups: {
-      "*": { requireMention: true },
-    },
+    groupPolicy: "disabled",  // groups off — allowFrom list only
   },
 },
 ```
 
-This ensures only messages from your phone number are processed. Group messages require an @mention.
+This ensures only messages from the numbers in `allowFrom` are processed. Groups are disabled by default in this repo.
 
 ### 6.4 Test it
 
@@ -374,23 +371,15 @@ This prevents external access even if the gateway binding is accidentally change
 
 ### 7.5 Audit logging
 
-Already enabled in the repo config:
-
-```json5
-gateway: {
-  logging: {
-    level: "info",
-    logActions: true,
-    logToolCalls: true,
-  },
-},
-```
-
-Check logs:
+OpenClaw logs to `~/.openclaw/logs/gateway.log`. Check logs with:
 
 ```bash
 openclaw logs --tail 50
+# or tail directly:
+tail -50 ~/.openclaw/logs/gateway.log
 ```
+
+Logging verbosity is controlled by OpenClaw defaults or a `gateway.logging` block in `openclaw.json` if supported by your version. Refer to `openclaw --help` for current options.
 
 ### 7.6 Skill vetting
 
@@ -495,7 +484,7 @@ and conversational flow. OpenClaw controls it via REST API.
 1. Go to **Assistants → Create Assistant**
 2. Configure:
    - **Model provider:** OpenAI (managed by Vapi — uses their API key, not yours)
-   - **Model:** gpt-4o (conversational variant, ~0.6s latency)
+   - **Model:** gpt-4o (Vapi manages this — uses their API key, not yours; ~0.6s latency)
    - **First Message Mode:** Assistant speaks first
    - **First Message:** `Hi, I'm calling on behalf of Igor Arsenin. How are you?`
    - **System Prompt:** A comprehensive prompt covering outbound task execution,
@@ -576,7 +565,7 @@ Polling:   cron (every 30 min) → vapi-call.py inbound-check → WhatsApp alert
 - Inbound calls are tracked in `.vapi-seen-calls` (git-ignored) to avoid duplicate alerts
 - The `inbound-call-check` cron job in `config/cron/jobs.json` runs every 30 minutes
 - Outbound calls use `assistantOverrides` to inject task-specific instructions per call
-- Cost is ~$0.11/minute (Vapi's rate for gpt-4o + telephony + TTS/STT)
+- Cost is ~$0.11/minute (Vapi's rate for their managed model + telephony + TTS/STT)
 
 ---
 
@@ -591,11 +580,12 @@ openclaw gateway status
 
 # 2. Models are configured
 openclaw models list
-# Expected: shows openai/gpt-4o and google/gemini-2.5-pro
+# Expected: shows openai/gpt-5.4 and google/gemini-2.5-pro
 
 # 3. Skills are installed
 openclaw skills list
-# Expected: browser-automation, gmail, send-email, cursor-ide-agent
+# Expected: browser-automation, himalaya (email), gog (Google Workspace),
+#           cursor-ide-agent, apple-reminders, and others (see TOOLS.md for full list)
 
 # 4. Cron jobs are loaded
 openclaw cron list

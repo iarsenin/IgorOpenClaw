@@ -67,7 +67,7 @@ def get_db():
     except sqlite3.OperationalError as e:
         if "authorization denied" in str(e) or "unable to open" in str(e):
             print("ERROR: Full Disk Access required.", file=sys.stderr)
-            print("Grant it to the node binary or Terminal in:", file=sys.stderr)
+            print("Grant it to the python3 binary or Terminal in:", file=sys.stderr)
             print("  System Settings > Privacy & Security > Full Disk Access", file=sys.stderr)
             sys.exit(1)
         raise
@@ -242,7 +242,14 @@ def main():
     args = sys.argv[2:]
     if "--limit" in args:
         idx = args.index("--limit")
-        limit = int(args[idx + 1])
+        if idx + 1 >= len(args):
+            print("ERROR: --limit requires a numeric argument", file=sys.stderr)
+            sys.exit(1)
+        try:
+            limit = int(args[idx + 1])
+        except ValueError:
+            print(f"ERROR: --limit value must be an integer, got: {args[idx + 1]}", file=sys.stderr)
+            sys.exit(1)
         args = args[:idx] + args[idx + 2:]
 
     if cmd == "chats":

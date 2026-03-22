@@ -152,7 +152,7 @@ truly need browser automation, use the `browser-automation` Playwright skill.
 ## iMessage / SMS — via scripts/imessage.py
 
 Read and send iMessages and SMS texts via the Messages.app database and AppleScript.
-Requires Full Disk Access granted to the node binary.
+Requires Full Disk Access granted to the **python3 binary** (not node) — `imessage.py` is invoked via `python3`. Grant in: System Settings → Privacy & Security → Full Disk Access.
 
 ### CRITICAL: Not the same as WhatsApp (no live push to Clawd)
 

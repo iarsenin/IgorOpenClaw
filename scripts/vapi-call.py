@@ -113,7 +113,11 @@ def cmd_call(number, task_instructions):
                 "messages": [
                     {
                         "role": "system",
-                        "content": f"TASK FOR THIS CALL:\n{task_instructions}\n\nFollow your base system prompt rules. Never commit to payments or final decisions."
+                        "content": (
+                            f"TASK FOR THIS CALL:\n{task_instructions}\n\n"
+                            f"{OUTBOUND_VOICE_RULES}\n\n"
+                            "Follow your base system prompt rules. Never commit to payments or final decisions."
+                        )
                     }
                 ]
             }

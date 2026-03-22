@@ -10,10 +10,16 @@ OPENCLAW_DIR="$HOME/.openclaw"
 echo "=== IgorOpenClaw Uninstall ==="
 echo ""
 
-# --- Stop daemon ---
+# --- Stop daemon and unload LaunchAgent ---
+PLIST="$HOME/Library/LaunchAgents/ai.openclaw.gateway.plist"
 if command -v openclaw &>/dev/null; then
     echo "Stopping OpenClaw gateway..."
     openclaw gateway stop 2>/dev/null || true
+fi
+if [ -f "$PLIST" ]; then
+    launchctl unload "$PLIST" 2>/dev/null || true
+    rm -f "$PLIST"
+    echo "Removed LaunchAgent: $PLIST"
 fi
 
 # --- Remove symlinks ---
@@ -33,6 +39,6 @@ fi
 echo ""
 echo "=== Uninstall Complete ==="
 echo ""
-echo "The OpenClaw installation and your .env are still on disk."
+echo "The OpenClaw npm package and your .env are still on disk."
 echo "To fully remove OpenClaw: npm uninstall -g openclaw"
-echo "To remove config dir: rm -rf ~/.openclaw"
+echo "To remove config dir:     rm -rf ~/.openclaw"
