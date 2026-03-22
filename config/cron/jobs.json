@@ -27,7 +27,7 @@
       "enabled": true,
       "sessionTarget": "isolated",
       "wakeMode": "now",
-      "prompt": "Morning briefing: summarize unread emails (both Gmail and Yahoo), list today's calendar events, report any overnight errors, and include status of any active tasks from MEMORY.md. Send via WhatsApp."
+      "prompt": "Morning briefing: summarize unread emails (both Gmail and Yahoo), list today's calendar events, check for any overnight inbound phone calls (run vapi-call.py inbound-check), report any overnight errors, and include status of any active tasks from MEMORY.md. Send via WhatsApp."
     },
     {
       "id": "email-triage",

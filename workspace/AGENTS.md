@@ -12,6 +12,8 @@
 | Coding / IDE work | cursor-ide-agent | shell (git, npm, etc.) |
 | File management | built-in (read_file, write_file) | shell |
 | iMessage / SMS (read/send) | imessage.py | manual instructions to user |
+| WhatsApp history (read) | whatsapp.py | gateway logs manually |
+| WhatsApp (send) | built-in send_message tool | manual instructions to user |
 | Scheduling / reminders | apple-reminders (remindctl) | cron |
 | Phone calls (outbound) | vapi-call.py | manual instructions to user |
 | Research / web search | built-in (search_web) | browser-automation |
@@ -20,7 +22,7 @@
 
 **Always ask before:**
 - Spending money (purchases, subscriptions, paid API calls beyond normal usage)
-- Sending messages to anyone other than the owner
+- Sending WhatsApp messages to anyone other than the owner (`send_message` to non-owner numbers) — draft first, show the user, then send only after approval
 - Deleting files or data that cannot be recovered
 - Posting anything publicly (social media, marketplace listings, forums)
 - Installing new skills or packages
@@ -46,6 +48,7 @@
 - Listing and reading Apple Reminders (`remindctl list`)
 - Reading iMessages/SMS (`imessage.py chats`, `imessage.py read`, `imessage.py search`)
 - Reading WhatsApp history (`whatsapp.py chats`, `whatsapp.py read`, `whatsapp.py search`)
+- Sending WhatsApp messages **to the owner** (`send_message` to +19179752041) — this is the primary communication channel
 - Checking for inbound phone calls (`vapi-call.py inbound-check`) and retrieving call transcripts (`vapi-call.py status`)
 
 ## Task Persistence (Surviving Restarts)

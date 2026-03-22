@@ -182,15 +182,15 @@ python3 "$REPO/scripts/whatsapp.py" search "meeting tomorrow" --limit 10
 
 ### Rules
 - **Reading is autonomous** — "check my WhatsApp", "what did X say" can be done without asking
-- **Sending ALWAYS requires explicit user approval** — use `openclaw message send` only after showing draft
+- **Sending ALWAYS requires explicit user approval** — use the built-in `send_message` tool (see WhatsApp Messaging section below) only after showing draft and getting confirmation
 - Only covers messages since the gateway started logging (not full WhatsApp history)
 - "Check my messages" = iMessage/SMS; "Check my WhatsApp" = this tool
 - "Check all my messages" = iMessage/SMS + WhatsApp + email
 
-## WhatsApp Messaging — CRITICAL FORMAT
+## WhatsApp Messaging — send_message tool (CRITICAL FORMAT)
 
-When sending WhatsApp messages via the `send_message` tool, the `target` MUST be in
-**E.164 format** — that means the full phone number WITH the `+` prefix.
+To **send** WhatsApp messages, use the built-in `send_message` tool (NOT a script).
+The `target` MUST be in **E.164 format** — the full phone number WITH the `+` prefix.
 
 Examples of CORRECT targets:
 - `+19176997436`
@@ -260,6 +260,20 @@ python3 "$REPO/scripts/vapi-call.py" inbound-check
    - Structured report (summary, outcome, follow-ups)
    - Recording URL
 7. Clawd summarizes the result for the user
+
+### Polling for call results
+
+After `vapi-call.py call` returns, the call is **async** — Riley is talking while
+Clawd waits. Do NOT immediately run `status`; the call hasn't finished yet.
+
+1. Wait **30 seconds** after initiating the call
+2. Run `vapi-call.py status <call_id>`
+3. If status is still `in-progress` or `ringing`, wait **60 seconds** and check again
+4. Repeat until status is `ended` (most calls end within 1–5 minutes)
+5. Once ended, read the transcript and structured report
+
+If the user is in a live chat, tell them: "Call is in progress — I'll share the
+transcript when it's done." Then poll in the background.
 
 ### CRITICAL: Riley is a separate AI with NO shared context
 
