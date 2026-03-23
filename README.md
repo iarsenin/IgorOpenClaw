@@ -66,10 +66,11 @@ IgorOpenClaw/
 │   └── HEARTBEAT.md       ← Proactive behavior guidelines (references cron/jobs.json)
 └── scripts/
     ├── setup.sh           ← Bootstrap: copy config from template, symlink workspace+cron, daemon install
+    ├── uninstall.sh       ← Teardown (remove symlinks, stop daemon, remove LaunchAgent)
     ├── imessage.py        ← iMessage/SMS read & send helper (chat.db + AppleScript)
     ├── whatsapp.py        ← WhatsApp message history reader (parses gateway logs)
-    ├── vapi-call.py       ← Outbound phone calls via Vapi AI voice agent
-    └── uninstall.sh       ← Teardown (remove symlinks, stop daemon)
+    ├── vapi-call.py       ← Outbound/inbound phone calls via Vapi AI voice agent
+    └── api-spend-check.py ← Daily API spend report (OpenAI, Vapi, Cursor status)
 ```
 
 ## Quick Start

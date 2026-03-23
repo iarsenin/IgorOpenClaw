@@ -236,7 +236,7 @@ The IgorOpenClaw template includes:
 - **Models**: OpenAI `gpt-5.4` as primary, Google `gemini-2.5-pro` as fallback
 - **Gateway**: Bound to localhost (mode: local), port 18789, token auth enabled
 - **WhatsApp**: Enabled with `allowFrom` phone number restriction, groups disabled
-- **Heartbeat / Logging**: Enabled or defaults per OpenClaw version — check `openclaw gateway status` for active settings
+- **Logging**: Logs written to `/tmp/openclaw/openclaw-YYYY-MM-DD.log` (rotated daily)
 
 ### 5.2 Customize the config
 
@@ -371,15 +371,17 @@ This prevents external access even if the gateway binding is accidentally change
 
 ### 7.5 Audit logging
 
-OpenClaw logs to `~/.openclaw/logs/gateway.log`. Check logs with:
+OpenClaw logs to `/tmp/openclaw/openclaw-YYYY-MM-DD.log` (rotated daily). Check logs with:
 
 ```bash
-openclaw logs --tail 50
-# or tail directly:
-tail -50 ~/.openclaw/logs/gateway.log
+# Today's log
+tail -50 /tmp/openclaw/openclaw-$(date +%Y-%m-%d).log
+
+# List recent log files
+ls -lt /tmp/openclaw/openclaw-*.log | head -5
 ```
 
-Logging verbosity is controlled by OpenClaw defaults or a `gateway.logging` block in `openclaw.json` if supported by your version. Refer to `openclaw --help` for current options.
+Logging verbosity is controlled by OpenClaw defaults. Refer to `openclaw --help` for current options.
 
 ### 7.6 Skill vetting
 
@@ -687,7 +689,7 @@ launchctl list | grep openclaw
 openclaw gateway start
 
 # Check logs for errors
-openclaw logs --tail 100
+tail -100 /tmp/openclaw/openclaw-$(date +%Y-%m-%d).log
 ```
 
 ### Gateway port already in use

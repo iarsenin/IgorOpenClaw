@@ -83,8 +83,9 @@ openclaw gateway restart
 # Check gateway health
 openclaw gateway status
 
-# View recent logs
-tail -50 ~/.openclaw/logs/gateway.log
+# View recent logs (rotated daily)
+ls -lt /tmp/openclaw/openclaw-*.log | head -3
+tail -50 /tmp/openclaw/openclaw-$(date +%Y-%m-%d).log
 ```
 
 ## Current state snapshot
@@ -115,7 +116,7 @@ Keep this section updated after every change session.
   - Newly added: gog (Google Workspace), himalaya (email IMAP/SMTP),
     apple-reminders (remindctl)
 - **iMessage/SMS:** scripts/imessage.py (reads chat.db, sends via AppleScript).
-  Requires Full Disk Access for node binary. Read=autonomous, send=ask user.
+  Requires Full Disk Access for python3 binary. Read=autonomous, send=ask user.
 - **Phone calls:** scripts/vapi-call.py (outbound + inbound via Vapi AI).
   Voice agent "Riley" (assistant ID in VAPI_ASSISTANT_ID env var).
   Outbound number: +19179628631. Fallback: +19179752041 (Igor's cell).

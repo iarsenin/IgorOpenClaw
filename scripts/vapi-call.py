@@ -61,15 +61,12 @@ def get_env(key):
 
 
 def _ssl_context():
-    """Build an SSL context, falling back to unverified if certifi is unavailable."""
+    """Build an SSL context using certifi, falling back to macOS system keychain."""
     try:
         import certifi
         return ssl.create_default_context(cafile=certifi.where())
     except ImportError:
-        ctx = ssl.create_default_context()
-        ctx.check_hostname = False
-        ctx.verify_mode = ssl.CERT_NONE
-        return ctx
+        return ssl.create_default_context()
 
 
 def api_request(method, path, data=None):
@@ -309,7 +306,14 @@ def main():
         limit = 10
         if "--limit" in sys.argv:
             idx = sys.argv.index("--limit")
-            limit = int(sys.argv[idx + 1])
+            if idx + 1 >= len(sys.argv):
+                print("ERROR: --limit requires a numeric argument", file=sys.stderr)
+                sys.exit(1)
+            try:
+                limit = int(sys.argv[idx + 1])
+            except ValueError:
+                print(f"ERROR: --limit value must be an integer, got: {sys.argv[idx + 1]}", file=sys.stderr)
+                sys.exit(1)
         cmd_list(limit)
     elif cmd == "inbound-check":
         cmd_inbound_check()

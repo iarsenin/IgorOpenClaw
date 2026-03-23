@@ -1,0 +1,215 @@
+#!/usr/bin/env python3
+"""Daily API spend report: OpenAI, Vapi, Cursor plan status.
+
+Usage:
+    python3 scripts/api-spend-check.py
+
+Reads credentials from .env (OPENAI_ADMIN_KEY, VAPI_API_KEY).
+Reads Cursor token from local Cursor SQLite.
+Prints a short plaintext summary to stdout.
+"""
+
+import json
+import os
+import sqlite3
+import ssl
+import sys
+import time
+import urllib.error
+import urllib.request
+from datetime import datetime, timedelta, timezone
+
+REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+ENV_PATH = os.path.join(REPO, ".env")
+
+
+# ── Credentials ──────────────────────────────────────────────────────────────
+
+def load_env():
+    env = {}
+    if os.path.exists(ENV_PATH):
+        with open(ENV_PATH) as f:
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith("#") and "=" in line:
+                    k, v = line.split("=", 1)
+                    env[k.strip()] = v.strip()
+    # env vars override file
+    for k in list(env.keys()):
+        env[k] = os.environ.get(k, env[k])
+    return env
+
+
+def ssl_ctx():
+    try:
+        import certifi
+        return ssl.create_default_context(cafile=certifi.where())
+    except ImportError:
+        return ssl.create_default_context()
+
+
+def fetch(url, headers, ctx, timeout=15):
+    req = urllib.request.Request(url, headers=headers)
+    try:
+        with urllib.request.urlopen(req, context=ctx, timeout=timeout) as r:
+            return json.loads(r.read())
+    except urllib.error.HTTPError as e:
+        raise RuntimeError(f"HTTP {e.code}: {e.read()[:200]}")
+
+
+# ── OpenAI ────────────────────────────────────────────────────────────────────
+
+def openai_spend(admin_key, ctx):
+    start = int(time.time() - 86400)
+    end   = int(time.time())
+    hdrs  = {"Authorization": f"Bearer {admin_key}"}
+
+    cost_data = fetch(
+        f"https://api.openai.com/v1/organization/costs?start_time={start}&end_time={end}&limit=100",
+        hdrs, ctx)
+    total = sum(
+        float((r.get("amount") or {}).get("value", 0))
+        for b in cost_data.get("data", [])
+        for r in b.get("results", [])
+    )
+
+    usage_data = fetch(
+        f"https://api.openai.com/v1/organization/usage/completions"
+        f"?start_time={start}&end_time={end}&bucket_width=1d&group_by=model&limit=31",
+        hdrs, ctx)
+    by_model = {}
+    for b in usage_data.get("data", []):
+        for r in b.get("results", []):
+            m = r.get("model") or "unknown"
+            by_model[m] = (
+                by_model.get(m, (0, 0))[0] + (r.get("input_tokens") or 0),
+                by_model.get(m, (0, 0))[1] + (r.get("output_tokens") or 0),
+            )
+
+    model_str = ", ".join(
+        f"{m}: {round(i/1000)}k in/{round(o/1000)}k out"
+        for m, (i, o) in sorted(by_model.items(), key=lambda x: -(x[1][0] + x[1][1]))
+    ) or "no model detail"
+
+    return total, model_str
+
+
+# ── Vapi ──────────────────────────────────────────────────────────────────────
+
+BROWSER_UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+
+
+def vapi_spend(api_key, ctx):
+    calls = fetch(
+        "https://api.vapi.ai/call?limit=100",
+        {"Authorization": f"Bearer {api_key}", "User-Agent": BROWSER_UA}, ctx)
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
+    total = 0.0
+    count = 0
+    for c in (calls if isinstance(calls, list) else []):
+        ts_str = c.get("startedAt") or c.get("createdAt", "")
+        if not ts_str:
+            continue
+        try:
+            ts = datetime.fromisoformat(ts_str.replace("Z", "+00:00"))
+        except ValueError:
+            continue
+        if ts >= cutoff:
+            total += float(c.get("cost") or 0)
+            count += 1
+    return total, count
+
+
+# ── Cursor ────────────────────────────────────────────────────────────────────
+
+def cursor_status(ctx):
+    db_path = os.path.expanduser(
+        "~/Library/Application Support/Cursor/User/globalStorage/state.vscdb"
+    )
+    if not os.path.exists(db_path):
+        return None, None, False, None
+    db = sqlite3.connect(db_path)
+    try:
+        row = db.execute(
+            "SELECT value FROM ItemTable WHERE key='cursorAuth/accessToken'"
+        ).fetchone()
+    finally:
+        db.close()
+    if not row:
+        return None, None, False, None
+    token = row[0]
+
+    opener = urllib.request.build_opener(urllib.request.HTTPSHandler(context=ctx))
+    req = urllib.request.Request(
+        "https://api2.cursor.sh/auth/full_stripe_profile",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    with opener.open(req, timeout=8) as r:
+        cp = json.loads(r.read())
+
+    plan     = cp.get("individualMembershipType") or cp.get("membershipType", "?")
+    status   = cp.get("subscriptionStatus", "?")
+    failed   = cp.get("lastPaymentFailed", False)
+    cancels  = cp.get("pendingCancellationDate")
+    return plan, status, failed, cancels
+
+
+# ── Main ──────────────────────────────────────────────────────────────────────
+
+def main():
+    env = load_env()
+    ctx = ssl_ctx()
+    lines = ["💰 API Spend — last 24h"]
+
+    # OpenAI
+    admin_key = env.get("OPENAI_ADMIN_KEY", "")
+    if admin_key:
+        try:
+            total, models = openai_spend(admin_key, ctx)
+            lines.append(f"OpenAI: ${total:.2f}  ({models})")
+        except Exception as e:
+            lines.append(f"OpenAI: fetch error ({e})")
+    else:
+        lines.append("OpenAI: OPENAI_ADMIN_KEY not set")
+
+    # Vapi
+    vapi_key = env.get("VAPI_API_KEY", "")
+    if vapi_key:
+        try:
+            total, count = vapi_spend(vapi_key, ctx)
+            lines.append(f"Vapi:   ${total:.2f}  ({count} call(s))")
+        except Exception as e:
+            lines.append(f"Vapi:   fetch error ({e})")
+    else:
+        lines.append("Vapi:   VAPI_API_KEY not set")
+
+    # Cursor
+    try:
+        plan, status, failed, cancels = cursor_status(ctx)
+        if plan:
+            note = ""
+            if failed:
+                note = "  ⚠️ PAYMENT FAILED"
+            elif cancels:
+                note = f"  ⚠️ cancels {cancels[:10]}"
+            lines.append(f"Cursor: {plan} / {status}{note} — usage charges: cursor.com/settings")
+        else:
+            lines.append("Cursor: token unavailable (open Cursor to refresh)")
+    except Exception as e:
+        lines.append(f"Cursor: fetch error ({e})")
+
+    lines.append("Gemini: check GCP Console (no billing API via key)")
+
+    # Total
+    try:
+        oai = float([l for l in lines if l.startswith("OpenAI:")][0].split("$")[1].split()[0])
+        vap = float([l for l in lines if l.startswith("Vapi:")][0].split("$")[1].split()[0])
+        lines.append(f"Total billed (OpenAI+Vapi): ${oai+vap:.2f}")
+    except Exception:
+        pass
+
+    print("\n".join(lines))
+
+
+if __name__ == "__main__":
+    main()

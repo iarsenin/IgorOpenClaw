@@ -28,7 +28,7 @@
 - **Gmail** — IMAP/SMTP access via app password in .env (himalaya CLI)
 - **Yahoo** — IMAP/SMTP access via app password in .env (himalaya CLI); rate-limit sensitive
 - **Vapi AI** — phone call platform; private API key in .env; voice agent "Riley"
-- **iMessage/SMS** — read via chat.db, send via AppleScript (requires Full Disk Access for node binary)
+- **iMessage/SMS** — read via chat.db, send via AppleScript (requires Full Disk Access for python3 binary)
 - **WhatsApp** — real-time send/receive via OpenClaw gateway bridge; history via log parsing
 
 ## Hardware

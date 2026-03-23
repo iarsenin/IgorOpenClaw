@@ -5,6 +5,7 @@
       "id": "post-restart-resume",
       "name": "Post-Restart Resume",
       "description": "Immediately after the 4 AM restart, check MEMORY.md for active tasks and resume them",
+      "agentId": "main",
       "schedule": {
         "kind": "cron",
         "expr": "5 4 * * *"
@@ -13,12 +14,17 @@
       "enabled": true,
       "sessionTarget": "isolated",
       "wakeMode": "now",
-      "prompt": "Gateway just restarted. Follow AGENTS.md § Task Persistence → On startup: read MEMORY.md Active Tasks, resume active ones, skip paused. Respect quiet hours. If you need a decision from Igor, follow AGENTS.md § Questions to the user (prefer y/n or multiple choice when practical). Run **browser close** once if the tool is available — clears orphan managed Chrome tabs from an interrupted prior session (AGENTS.md § Browser hygiene)."
+      "payload": {
+        "kind": "agentTurn",
+        "message": "Gateway just restarted. Follow AGENTS.md § Task Persistence → On startup: read MEMORY.md Active Tasks, resume active ones, skip paused. Respect quiet hours. If you need a decision from Igor, follow AGENTS.md § Questions to the user (prefer y/n or multiple choice when practical). Run **browser close** once if the tool is available — clears orphan managed Chrome tabs from an interrupted prior session (AGENTS.md § Browser hygiene).",
+        "timeoutSeconds": 300
+      }
     },
     {
       "id": "morning-briefing",
       "name": "Morning Briefing",
       "description": "Daily morning summary of emails, tasks, and overnight events",
+      "agentId": "main",
       "schedule": {
         "kind": "cron",
         "expr": "30 7 * * *"
@@ -27,12 +33,17 @@
       "enabled": true,
       "sessionTarget": "isolated",
       "wakeMode": "now",
-      "prompt": "Morning briefing: summarize unread emails (both Gmail and Yahoo), list today's calendar events, check for any overnight inbound phone calls (run vapi-call.py inbound-check), report any overnight errors, and include status of any active tasks from MEMORY.md. For tasks with **sms-watch**, note **last-sms-scan** / whether vendor replies may be pending. For Chrono24 task, mention **last-chrono-baseline** if present. Send via WhatsApp. If you used the browser for this briefing, run **browser close** before sending."
+      "payload": {
+        "kind": "agentTurn",
+        "message": "Morning briefing: summarize unread emails (both Gmail and Yahoo), list today's calendar events, check for any overnight inbound phone calls (run vapi-call.py inbound-check), report any overnight errors, and include status of any active tasks from MEMORY.md. For tasks with **sms-watch**, note **last-sms-scan** / whether vendor replies may be pending. For Chrono24 task, mention **last-chrono-baseline** if present. Send via WhatsApp. If you used the browser for this briefing, run **browser close** before sending.",
+        "timeoutSeconds": 600
+      }
     },
     {
       "id": "email-triage",
       "name": "Email Triage",
       "description": "Periodic email inbox check and triage",
+      "agentId": "main",
       "schedule": {
         "kind": "cron",
         "expr": "0 8,10,12,14,16,18,20,22 * * *"
@@ -41,12 +52,17 @@
       "enabled": true,
       "sessionTarget": "isolated",
       "wakeMode": "now",
-      "prompt": "Check email on both Gmail and Yahoo (see TOOLS.md § Email Access). Flag urgent messages, draft routine replies. Only notify user if something needs attention. If you need a decision from Igor, prefer y/n or A/B/C style options (AGENTS.md § Questions to the user). Also scan for senders/subjects tied to **active** tasks in workspace/MEMORY.md (e.g. Chrono24, Sub-Zero, appliance repair, Certified Refrigeration, Precision) and surface anything new that affects those tasks."
+      "payload": {
+        "kind": "agentTurn",
+        "message": "Check email on both Gmail and Yahoo (see TOOLS.md § Email Access). Flag urgent messages, draft routine replies. Only notify user if something needs attention. If you need a decision from Igor, prefer y/n or A/B/C style options (AGENTS.md § Questions to the user). Also scan for senders/subjects tied to **active** tasks in workspace/MEMORY.md (e.g. Chrono24, Sub-Zero, appliance repair, Certified Refrigeration, Precision) and surface anything new that affects those tasks.",
+        "timeoutSeconds": 600
+      }
     },
     {
       "id": "chrono24-listing-monitor",
       "name": "Chrono24 Listing Monitor",
       "description": "Check watch listing status when Chrono24 task is active in MEMORY",
+      "agentId": "main",
       "schedule": {
         "kind": "cron",
         "expr": "0 8,11,14,17,20 * * *"
@@ -55,12 +71,17 @@
       "enabled": true,
       "sessionTarget": "isolated",
       "wakeMode": "now",
-      "prompt": "Chrono24 listing monitor — see MEMORY.md Active Tasks.\n\n1) Read workspace/MEMORY.md. If there is **no** active task involving Chrono24 / private seller listing / watchId 45455036, **stop** — no WhatsApp.\n\n2) If there **is** an active Chrono24 task, read **last-chrono-baseline** (and listing URL from context). Check current listing state (managed browser is OK; use TOOLS.md guidance).\n\n3) **WhatsApp Igor only if** one of: listing becomes **active/live**, buyer/offer/message needs action, or **material** status change vs baseline. If unchanged / still setting up, **do not** notify.\n\n4) Update MEMORY on every run: **last-chrono-check** (ET time) and **last-chrono-baseline** (one-line state: inactive/active, notable flags).\n\n5) **Browser hygiene (mandatory):** if you opened the browser for this job, run **`browser close`** before finishing — success, failure, or timeout (AGENTS.md § Browser hygiene).\n\n6) **Quiet hours 11 PM–7 AM ET:** defer non-urgent alerts to the 7:30 AM briefing unless buyer action is urgent."
+      "payload": {
+        "kind": "agentTurn",
+        "message": "Chrono24 listing monitor — see MEMORY.md Active Tasks.\n\n1) Read workspace/MEMORY.md. If there is **no** active task involving Chrono24 / private seller listing / watchId 45455036, **stop** — no WhatsApp.\n\n2) If there **is** an active Chrono24 task, read **last-chrono-baseline** (and listing URL from context). Check current listing state (managed browser is OK; use TOOLS.md guidance).\n\n3) **WhatsApp Igor only if** one of: listing becomes **active/live**, buyer/offer/message needs action, or **material** status change vs baseline. If unchanged / still setting up, **do not** notify.\n\n4) Update MEMORY on every run: **last-chrono-check** (ET time) and **last-chrono-baseline** (one-line state: inactive/active, notable flags).\n\n5) **Browser hygiene (mandatory):** if you opened the browser for this job, run **`browser close`** before finishing — success, failure, or timeout (AGENTS.md § Browser hygiene).\n\n6) **Quiet hours 11 PM–7 AM ET:** defer non-urgent alerts to the 7:30 AM briefing unless buyer action is urgent.",
+        "timeoutSeconds": 600
+      }
     },
     {
       "id": "sms-reply-monitor",
       "name": "SMS / iMessage Reply Monitor",
       "description": "Poll Apple Messages threads that are under active watch for new vendor replies",
+      "agentId": "main",
       "schedule": {
         "kind": "cron",
         "expr": "30 8,10,12,14,16,18,20 * * *"
@@ -69,12 +90,17 @@
       "enabled": true,
       "sessionTarget": "isolated",
       "wakeMode": "now",
-      "prompt": "SMS/iMessage monitoring (see AGENTS.md § SMS reply monitoring + TOOLS.md § iMessage).\n\n1) Read workspace/MEMORY.md → Active Tasks.\n2) For each **active** task that has **sms-watch** (E.164 number or chat id) OR context that says you are waiting on an SMS/iMessage vendor reply, run:\n   `python3 ~/Library/CloudStorage/GoogleDrive-igor.arsenin@gmail.com/My\\ Drive/git/IgorOpenClaw/scripts/imessage.py read \"<identifier>\" --limit 30`\n   Use the identifier from **sms-watch** or the vendor number in context.\n3) Compare latest messages to **last-sms-baseline** in that task (timestamp + short summary you stored last time). If there is a **new inbound** from the vendor (not from Igor) since the baseline, send Igor a **concise WhatsApp** summary and suggest next steps (y/n or A/B/C if a decision is needed).\n4) If nothing new, **do not** WhatsApp — only update MEMORY **last-sms-scan** (ET time) and refresh **last-sms-baseline** if needed.\n5) **Quiet hours 11 PM–7 AM ET:** defer non-urgent SMS alerts to the 7:30 AM briefing unless the task context marks the thread as urgent.\n6) If a task has no **sms-watch** but clearly awaits vendor SMS, add **sms-watch** + **last-sms-baseline** on this run for next time.\n7) If **imessage.py** fails (e.g. Full Disk Access / permissions), add a one-line note under that task in MEMORY and **skip** WhatsApp this cycle unless the task is marked urgent; do not spam — next successful run can clear the note."
+      "payload": {
+        "kind": "agentTurn",
+        "message": "SMS/iMessage monitoring (see AGENTS.md § SMS reply monitoring + TOOLS.md § iMessage).\n\n1) Read workspace/MEMORY.md → Active Tasks.\n2) For each **active** task that has **sms-watch** (E.164 number or chat id) OR context that says you are waiting on an SMS/iMessage vendor reply, run:\n   `python3 ~/Library/CloudStorage/GoogleDrive-igor.arsenin@gmail.com/My\\ Drive/git/IgorOpenClaw/scripts/imessage.py read \"<identifier>\" --limit 30`\n   Use the identifier from **sms-watch** or the vendor number in context.\n3) Compare latest messages to **last-sms-baseline** in that task (timestamp + short summary you stored last time). If there is a **new inbound** from the vendor (not from Igor) since the baseline, send Igor a **concise WhatsApp** summary and suggest next steps (y/n or A/B/C if a decision is needed).\n4) If nothing new, **do not** WhatsApp — only update MEMORY **last-sms-scan** (ET time) and refresh **last-sms-baseline** if needed.\n5) **Quiet hours 11 PM–7 AM ET:** defer non-urgent SMS alerts to the 7:30 AM briefing unless the task context marks the thread as urgent.\n6) If a task has no **sms-watch** but clearly awaits vendor SMS, add **sms-watch** + **last-sms-baseline** on this run for next time.\n7) If **imessage.py** fails (e.g. Full Disk Access / permissions), add a one-line note under that task in MEMORY and **skip** WhatsApp this cycle unless the task is marked urgent; do not spam — next successful run can clear the note.",
+        "timeoutSeconds": 300
+      }
     },
     {
       "id": "inbound-call-check",
       "name": "Inbound Call Check",
       "description": "Poll Vapi for new inbound phone calls and alert user",
+      "agentId": "main",
       "schedule": {
         "kind": "cron",
         "expr": "15,45 * * * *"
@@ -83,12 +109,17 @@
       "enabled": true,
       "sessionTarget": "isolated",
       "wakeMode": "now",
-      "prompt": "Run: python3 ~/Library/CloudStorage/GoogleDrive-igor.arsenin@gmail.com/My\\ Drive/git/IgorOpenClaw/scripts/vapi-call.py inbound-check\n\nIf there are new inbound calls, send Igor a WhatsApp summary with: who called, when, and what they wanted (from the transcript). If no new calls, do nothing.\n\n**Quiet hours 11 PM–7 AM ET:** do NOT send a WhatsApp alert during quiet hours unless the call transcript or summary indicates urgency (e.g. emergency, time-sensitive delivery, medical). Defer non-urgent alerts to the 7:30 AM morning briefing by noting them briefly at the end of that briefing."
+      "payload": {
+        "kind": "agentTurn",
+        "message": "Run: python3 ~/Library/CloudStorage/GoogleDrive-igor.arsenin@gmail.com/My\\ Drive/git/IgorOpenClaw/scripts/vapi-call.py inbound-check\n\nIf there are new inbound calls, send Igor a WhatsApp summary with: who called, when, and what they wanted (from the transcript). If no new calls, do nothing.\n\n**Quiet hours 11 PM–7 AM ET:** do NOT send a WhatsApp alert during quiet hours unless the call transcript or summary indicates urgency (e.g. emergency, time-sensitive delivery, medical). Defer non-urgent alerts to the 7:30 AM morning briefing by noting them briefly at the end of that briefing.",
+        "timeoutSeconds": 120
+      }
     },
     {
       "id": "api-spend-check",
       "name": "Daily API Spend Check",
       "description": "Fetch last-24h spend from paid APIs (OpenAI, Vapi, Cursor plan status) and WhatsApp a short summary to Igor",
+      "agentId": "main",
       "schedule": {
         "kind": "cron",
         "expr": "0 5 * * *"
@@ -97,12 +128,17 @@
       "enabled": true,
       "sessionTarget": "isolated",
       "wakeMode": "now",
-      "prompt": "Daily API spend check — send Igor a short WhatsApp summary of last-24h costs.\n\n**Step 0 — load credentials**\nParse ~/Library/CloudStorage/GoogleDrive-igor.arsenin@gmail.com/My\\ Drive/git/IgorOpenClaw/.env with python3 (skip comment/blank lines, split on first '=') to get OPENAI_ADMIN_KEY and VAPI_API_KEY.\nFor Cursor, read the access token from SQLite:\n```python\nimport sqlite3, ssl\ndb = sqlite3.connect(os.path.expanduser('~/Library/Application Support/Cursor/User/globalStorage/state.vscdb'))\ncursor_token = db.execute(\"SELECT value FROM ItemTable WHERE key='cursorAuth/accessToken'\").fetchone()[0]\n```\nFor HTTPS calls, build an SSL context that preserves certificate verification:\n```python\ntry:\n    import certifi; ctx = ssl.create_default_context(cafile=certifi.where())\nexcept ImportError:\n    ctx = ssl.create_default_context()  # uses macOS system keychain — do NOT disable verify_mode\n```\n\n**Step 1 — OpenAI cost (last 24h)**\n```python\nimport time, urllib.request, json\nstart = int(time.time() - 86400)\nend   = int(time.time())\nctx = ssl._create_unverified_context()\n# Total cost\nreq = urllib.request.Request(\n    f'https://api.openai.com/v1/organization/costs?start_time={start}&end_time={end}&limit=100',\n    headers={'Authorization': f'Bearer {OPENAI_ADMIN_KEY}'})\ndata = json.loads(urllib.request.urlopen(req, context=ctx).read())\noai_total = sum(float((r.get('amount') or {}).get('value', 0))\n                for b in data.get('data',[]) for r in b.get('results',[]))\n# Per-model tokens\nreq2 = urllib.request.Request(\n    f'https://api.openai.com/v1/organization/usage/completions?start_time={start}&end_time={end}&bucket_width=1d&group_by=model&limit=31',\n    headers={'Authorization': f'Bearer {OPENAI_ADMIN_KEY}'})\nusage = json.loads(urllib.request.urlopen(req2, context=ctx).read())\nby_model = {}\nfor b in usage.get('data',[]):\n    for r in b.get('results',[]):\n        m = r.get('model') or 'unknown'\n        by_model[m] = (by_model.get(m,(0,0))[0] + (r.get('input_tokens') or 0),\n                       by_model.get(m,(0,0))[1] + (r.get('output_tokens') or 0))\n# Format: 'gpt-5.4: 47M in/67k out'\nmodel_str = ', '.join(\n    f\"{m}: {round(i/1000)}k in/{round(o/1000)}k out\"\n    for m,(i,o) in sorted(by_model.items(), key=lambda x:-(x[1][0]+x[1][1]))\n) or 'no model detail'\n```\n\n**Step 2 — Vapi cost (last 24h)**\n```python\nfrom datetime import datetime, timezone, timedelta\nreq = urllib.request.Request('https://api.vapi.ai/call?limit=100',\n    headers={'Authorization': f'Bearer {VAPI_API_KEY}'})\ncalls = json.loads(urllib.request.urlopen(req, context=ctx).read())\ncutoff = datetime.now(timezone.utc) - timedelta(hours=24)\nvapi_total = 0.0; vapi_count = 0\nfor c in calls:\n    ts_str = c.get('startedAt') or c.get('createdAt', '')\n    if not ts_str: continue\n    ts = datetime.fromisoformat(ts_str.replace('Z','+00:00'))\n    if ts >= cutoff:\n        vapi_total += float(c.get('cost') or 0)\n        vapi_count += 1\n```\n\n**Step 3 — Cursor plan status**\n```python\nopener = urllib.request.build_opener(urllib.request.HTTPSHandler(context=ctx))\nreq = urllib.request.Request('https://api2.cursor.sh/auth/full_stripe_profile',\n    headers={'Authorization': f'Bearer {cursor_token}'})\ncp = json.loads(opener.open(req, timeout=8).read())\ncursor_plan   = cp.get('individualMembershipType') or cp.get('membershipType','?')\ncursor_status = cp.get('subscriptionStatus','?')\ncursor_failed = cp.get('lastPaymentFailed', False)\ncursor_cancel = cp.get('pendingCancellationDate')  # non-null = cancelling\n```\nNote: Cursor usage-based top-up charges (the >$50 items) are **Stripe usage records not exposed by the API**. Only the subscription plan/status is readable. Report plan+status and direct Igor to check https://cursor.com/settings for actual spend.\n\n**Step 4 — compose WhatsApp message** (≤8 lines, plain text, no markdown):\n```\n💰 API Spend — last 24h\nOpenAI: $X.XX  (model_str)\nVapi:   $X.XX  (N call(s))\nCursor: pro_plus / active — usage charges: cursor.com/settings  [⚠️ PAYMENT FAILED / CANCELLING if true]\nGemini: check GCP Console (no billing API via key)\nTotal billed (OpenAI+Vapi): $X.XX\n```\nRound dollars to 2 decimal places. On any fetch error, put 'fetch error' for that line and continue.\n\n**Step 5 — send** the message via WhatsApp to Igor.\n\n**No browser is used in this job.**"
+      "payload": {
+        "kind": "agentTurn",
+        "message": "Daily API spend check.\n\n1. Run the spend script and capture its output:\n   `python3 ~/Library/CloudStorage/GoogleDrive-igor.arsenin@gmail.com/My\\ Drive/git/IgorOpenClaw/scripts/api-spend-check.py`\n\n2. Send the exact output as a WhatsApp message to Igor (do not reformat or summarize — use it verbatim).\n\n3. No browser needed for this job.",
+        "timeoutSeconds": 120
+      }
     },
     {
       "id": "system-health",
       "name": "System Health",
       "description": "Periodic system and gateway health check",
+      "agentId": "main",
       "schedule": {
         "kind": "cron",
         "expr": "0 */6 * * *"
@@ -111,7 +147,11 @@
       "enabled": true,
       "sessionTarget": "isolated",
       "wakeMode": "now",
-      "prompt": "Run a system health check: verify gateway status, check disk space, review recent error logs. Only notify me if something is wrong. If recent gateway logs show browser timeouts/errors, run **browser close** once if available to clear stuck managed Chrome (TOOLS.md § Browser Rules)."
+      "payload": {
+        "kind": "agentTurn",
+        "message": "Run a system health check: verify gateway status, check disk space, review recent error logs. Only notify me if something is wrong. If recent gateway logs show browser timeouts/errors, run **browser close** once if available to clear stuck managed Chrome (TOOLS.md § Browser Rules).",
+        "timeoutSeconds": 180
+      }
     }
   ]
 }

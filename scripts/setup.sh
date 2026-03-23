@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # IgorOpenClaw — Setup Script
-# Symlinks repo config and workspace into ~/.openclaw/ and installs the daemon.
+# Copies config template, symlinks workspace + cron into ~/.openclaw/, installs daemon.
 # Run from the repo root: bash scripts/setup.sh
 
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -119,7 +119,7 @@ PLIST="$HOME/Library/LaunchAgents/ai.openclaw.gateway.plist"
 if [ -f "$PLIST" ] && [ -f "$REPO_DIR/.env" ]; then
     echo "Injecting API keys into LaunchAgent plist..."
     for VAR in OPENAI_API_KEY OPENAI_ADMIN_KEY GOOGLE_API_KEY GEMINI_API_KEY GMAIL_USER GMAIL_APP_PASSWORD YAHOO_USER YAHOO_APP_PASSWORD ALPHA_VANTAGE_KEY HUGGING_FACE_TOKEN VAPI_API_KEY VAPI_ASSISTANT_ID VAPI_PHONE_NUMBER_ID VAPI_PHONE_NUMBER TZ; do
-        VAL="${!VAR}"
+        VAL="${!VAR:-}"
         if [ -n "$VAL" ]; then
             /usr/libexec/PlistBuddy -c "Delete :EnvironmentVariables:$VAR" "$PLIST" 2>/dev/null || true
             /usr/libexec/PlistBuddy -c "Add :EnvironmentVariables:$VAR string $VAL" "$PLIST"

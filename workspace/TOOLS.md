@@ -370,8 +370,8 @@ Riley only knows:
 
 ### Troubleshooting
 
-- **SSL errors:** macOS Python 3.10 may lack certificates. The script auto-falls back to unverified SSL. Install `certifi` (`pip3 install certifi`) for proper verification.
-- **403 / Cloudflare errors:** The script uses `User-Agent: OpenClaw/1.0` to avoid blocks. If Vapi changes their WAF rules, update the User-Agent header.
+- **SSL errors:** macOS Python may lack bundled certificates. Scripts use `certifi` when available, falling back to the macOS system keychain. Install `certifi` (`pip3 install certifi`) if you see SSL verification failures.
+- **403 / Cloudflare errors:** `vapi-call.py` uses `User-Agent: OpenClaw/1.0`; `api-spend-check.py` uses a browser User-Agent for Vapi (Cloudflare can block non-browser UAs on GET endpoints). If calls start failing with 403, try updating the User-Agent header.
 - **Call not connecting:** Check `vapi-call.py status <call_id>` for `endedReason`. Common: `customer-did-not-answer`, `customer-busy`.
 - **Changing Riley's behavior:** Merge `config/riley-voice-behavior.md` into the assistant system prompt (Vapi dashboard or PATCH `/assistant/{VAPI_ASSISTANT_ID}`). Outbound voicemail rules are also injected per call by `vapi-call.py`.
 
