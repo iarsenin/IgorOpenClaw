@@ -48,6 +48,7 @@ Do **not** force this when only an open-ended answer is appropriate. Full rules 
 ### gog (Google Workspace)
 - Gmail, Calendar, Drive, Contacts, Sheets, Docs via CLI
 - Requires: gog CLI tool
+- **Auth:** OAuth tokens stored in file-based keyring (not macOS Keychain — avoids popup prompts). The daemon has `GOG_KEYRING_PASSWORD` injected via the LaunchAgent plist. If gog auth fails, re-run `scripts/setup.sh` to ensure the env var is current.
 
 ### coding-agent
 - Delegate coding tasks to Codex, Claude Code, or Pi agents
