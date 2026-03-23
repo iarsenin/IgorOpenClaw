@@ -10,7 +10,7 @@
 - **OpenClaw workspace:** `~/.openclaw/workspace/` — **symlinked** from repo `workspace/`
 - **Cron jobs:** `~/.openclaw/cron/jobs.json` — **symlinked** from repo `config/cron/jobs.json`
 - **Repo location:** ~/Library/CloudStorage/GoogleDrive-igor.arsenin@gmail.com/My Drive/git/IgorOpenClaw
-- **Gateway shell:** Prefer **`python3`** (not `python`) and **`grep`** — **`rg` (ripgrep) is often missing** from the daemon PATH and will fail (`command not found: rg`).
+- **Gateway shell:** Use **`python3`** — **`python` is NOT in the daemon PATH** and will fail (`command not found: python`). Use **`grep`** — **`rg` (ripgrep) is NOT in the daemon PATH** and will fail (`command not found: rg`).
 
 ## Interaction with Igor (quick replies)
 
@@ -131,10 +131,19 @@ Yahoo blocks IMAP after too many rapid connections. Follow these rules:
 **Chrome windows left open** if you skip this — treat **`browser close` as part
 of “done,”** not optional cleanup.
 
+### Browser tool API
+
+The browser tool uses **`ref` from snapshot**, NOT CSS selectors. Workflow:
+1. `browser navigate` to the page
+2. `browser snapshot` to get the page state with element **refs** (e.g. `e123`)
+3. `browser act` with `ref: "e123"` to interact with elements
+
+**Do NOT** use CSS selectors — the tool will error with *"'selector' is not supported. Use 'ref' from snapshot instead."*
+
 ### Mandatory sequence
 
 1. `browser navigate` / open tab (only if needed)
-2. Do your work (act, extract, screenshot, etc.)
+2. Do your work (`snapshot` → `act` with refs, extract, screenshot, etc.)
 3. **`browser close` — last command before** your final user-visible reply (WhatsApp) **or** before ending an isolated cron session
 4. If step 2 **errors or times out**, still run step 3, **then** explain the failure
 
@@ -148,6 +157,10 @@ The built-in browser tool requires Chrome with remote debugging. It is fragile.
 **Do NOT suggest the Browser Relay extension** — it is not installed and adds
 unnecessary complexity. For web tasks, prefer `search_web` or `curl`. If you
 truly need browser automation, use the `browser-automation` Playwright skill.
+
+### Sites that block non-browser requests (must use browser tool)
+
+- **chrono24.com** — Cloudflare returns HTTP 403 to `web_fetch` and `curl`. Always use `browser navigate` for Chrono24 pages.
 
 ## iMessage / SMS — via scripts/imessage.py
 
@@ -224,6 +237,8 @@ python3 "$REPO/scripts/whatsapp.py" search "meeting tomorrow" --limit 10
 - "Check all my messages" = iMessage/SMS + WhatsApp + email
 
 ## WhatsApp Messaging — send_message tool (CRITICAL FORMAT)
+
+The built-in `send_message` tool is **send-only**. It does NOT support `read` or other actions — attempting `message action read` will error with *"Message action read not supported for channel whatsapp."* To **read** WhatsApp history, use `whatsapp.py` (see above).
 
 To **send** WhatsApp messages, use the built-in `send_message` tool (NOT a script).
 The `target` MUST be in **E.164 format** — the full phone number WITH the `+` prefix.

@@ -16,7 +16,7 @@
       "wakeMode": "now",
       "payload": {
         "kind": "agentTurn",
-        "message": "Gateway just restarted. Follow AGENTS.md § Task Persistence → On startup: read MEMORY.md Active Tasks, resume active ones, skip paused. Respect quiet hours. If you need a decision from Igor, follow AGENTS.md § Questions to the user (prefer y/n or multiple choice when practical). Run **browser close** once if the tool is available — clears orphan managed Chrome tabs from an interrupted prior session (AGENTS.md § Browser hygiene).",
+        "message": "Gateway just restarted. Follow AGENTS.md § Task Persistence → On startup: read MEMORY.md Active Tasks, resume active ones, skip paused. Respect quiet hours. If you need a decision from Igor, follow AGENTS.md § Questions to the user (prefer y/n or multiple choice when practical). Attempt **browser close** once to clear orphan Chrome tabs — **if it errors ('No pages available' etc.), ignore and move on**; there may be no browser running after a clean restart.",
         "timeoutSeconds": 300
       }
     },
@@ -73,7 +73,7 @@
       "wakeMode": "now",
       "payload": {
         "kind": "agentTurn",
-        "message": "Chrono24 listing monitor — see MEMORY.md Active Tasks.\n\n1) Read workspace/MEMORY.md. If there is **no** active task involving Chrono24 / private seller listing / watchId 45455036, **stop** — no WhatsApp.\n\n2) If there **is** an active Chrono24 task, read **last-chrono-baseline** (and listing URL from context). Check current listing state (managed browser is OK; use TOOLS.md guidance).\n\n3) **WhatsApp Igor only if** one of: listing becomes **active/live**, buyer/offer/message needs action, or **material** status change vs baseline. If unchanged / still setting up, **do not** notify.\n\n4) Update MEMORY on every run: **last-chrono-check** (ET time) and **last-chrono-baseline** (one-line state: inactive/active, notable flags).\n\n5) **Browser hygiene (mandatory):** if you opened the browser for this job, run **`browser close`** before finishing — success, failure, or timeout (AGENTS.md § Browser hygiene).\n\n6) **Quiet hours 11 PM–7 AM ET:** defer non-urgent alerts to the 7:30 AM briefing unless buyer action is urgent.",
+        "message": "Chrono24 listing monitor — see MEMORY.md Active Tasks.\n\n1) Read workspace/MEMORY.md. If there is **no** active task involving Chrono24 / private seller listing / watchId 45455036, **stop** — no WhatsApp.\n\n2) If there **is** an active Chrono24 task, read **last-chrono-baseline** (and listing URL from context). Check current listing state **using the browser tool** — Chrono24 blocks `web_fetch` and `curl` with HTTP 403 (Cloudflare). Do NOT attempt `web_fetch`/`curl` on chrono24.com; go straight to `browser navigate`.\n\n3) **WhatsApp Igor only if** one of: listing becomes **active/live**, buyer/offer/message needs action, or **material** status change vs baseline. If unchanged / still setting up, **do not** notify.\n\n4) Update MEMORY on every run: **last-chrono-check** (ET time) and **last-chrono-baseline** (one-line state: inactive/active, notable flags).\n\n5) **Browser hygiene (mandatory):** run **`browser close`** before finishing — success, failure, or timeout (AGENTS.md § Browser hygiene).\n\n6) **Quiet hours 11 PM–7 AM ET:** defer non-urgent alerts to the 7:30 AM briefing unless buyer action is urgent.",
         "timeoutSeconds": 600
       }
     },
