@@ -141,6 +141,18 @@ what was tried, what worked, what failed, what's pending, and what Igor decided.
 *Optional fields (sibling bullets):* **`sms-watch`**, **`last-sms-baseline`**, **`last-sms-scan`** — see § SMS reply monitoring.
 *Optional for listing-watch tasks:* **`last-chrono-check`**, **`last-chrono-baseline`** — updated by **`chrono24-listing-monitor`** cron.
 
+### Size discipline (MEMORY.md ≤ 10,000 characters)
+
+MEMORY.md is loaded into the context window every turn. Bloat = wasted tokens + degraded reasoning.
+
+1. **Compress on day 3** — When a task has been active 3+ days, rewrite its context: drop resolved dead ends, collapse chronological history into a bullet-point summary, keep only what's needed to continue. The self-sufficiency test still applies.
+2. **Prune before writing** — Before adding new content, check size. If MEMORY.md exceeds ~8,000 characters:
+   - Compress the longest active task context first
+   - Trim Completed Tasks to the 10 most recent
+   - Drop empty placeholder sections (e.g. "No entries yet")
+3. **Completed Tasks are one-liners** — Format: `YYYY-MM-DD | title | outcome`. No context blocks, no monitoring fields.
+4. **Preferences / Corrections stay short** — One line each. If the list grows past 10 entries, consolidate related items.
+
 ### Lifecycle
 
 1. **Create** — write entry with all required fields the moment the task is assigned
