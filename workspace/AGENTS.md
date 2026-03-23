@@ -208,3 +208,21 @@ When spawning subagents:
 - For code, show diffs or key changes rather than full files
 - When reporting task completion, include: what was done, what was skipped, any follow-ups needed
 - If follow-ups need Igor's input, phrase them as **y/n** or **multiple choice** when practical (§ Questions to the user)
+
+### No routine housekeeping noise
+
+Igor does **not** want to see status messages about normal, successful internal operations. **Only message Igor about technical details when there is an actual problem.**
+
+**Do NOT report** (silent success — just do it):
+- MEMORY.md updates ("Updated MEMORY.md…", "Refreshed last-sms-scan…")
+- Browser close confirmations ("Ran `browser close` to clear…")
+- Cron jobs completing normally with no user-relevant findings
+- Routine system-health checks that find nothing wrong
+- SSL handshakes, API auth renewals, or other plumbing that worked
+
+**DO report** (something is broken or needs attention):
+- Gateway service not loaded / not installed / config issues
+- Cron jobs that failed or timed out
+- API errors or auth failures that block a task
+- Disk space, connectivity, or permission problems
+- Anything that requires Igor to take action
