@@ -80,7 +80,7 @@ Apple Messages **does not** push to OpenClaw. To get **periodic** checks without
 asking each time:
 
 1. **When you send** SMS/iMessage via `imessage.py send` for an **active task**, update
-   that task’s **context** in `MEMORY.md` with:
+   that task's **context** in `MEMORY.md` with:
    - **`sms-watch:`** — chat identifier (E.164 like `+19295818400`, or email if iMessage)
    - **`last-sms-baseline:`** — after sending, note time + one-line summary of the **last
      message in the thread** (so the next scan can detect *new* vendor replies)
@@ -89,21 +89,39 @@ asking each time:
    **last-sms-baseline**, and WhatsApps Igor **only if** there is new vendor inbound.
 3. **When the task** no longer needs SMS follow-up, remove **sms-watch** / **last-sms-baseline**
    from that task (or mark task completed).
-4. Igor can still ask ad-hoc *“check Precision SMS”* anytime; this job is a **safety net**.
+4. Igor can still ask ad-hoc *"check Precision SMS"* anytime; this job is a **safety net**.
 
 ## Task Persistence (Surviving Restarts)
 
-The gateway restarts daily at 4 AM ET. In-memory session context is lost.
-All persistent task state lives in `MEMORY.md → Active Tasks`.
+The gateway restarts daily at 4 AM ET. **All in-memory session context is destroyed.**
+The only thing that survives is `MEMORY.md`. If it isn't written there, it's gone.
+
+### Golden rule
+
+**When in doubt, write to MEMORY.** A redundant entry costs nothing. A lost context
+costs a confused cold start and repeated questions to Igor.
 
 ### When to persist
 
-Write a task to MEMORY.md immediately when it is:
-- Multi-step and won't finish in one session
-- Ongoing (conversations, monitoring, recurring follow-ups)
-- Explicitly requested to continue ("keep doing", "follow up on", "watch this")
+Write a task to MEMORY.md **immediately** when any of these are true:
+- It won't finish in the current turn (multi-step, waiting on a reply, needs research)
+- Igor asks you to continue, follow up, watch, or monitor something
+- You sent a message (SMS, email, call) and are waiting on a response
+- Igor made a decision or gave context you'll need later
 
 Do NOT persist: one-shot questions, quick lookups, or tasks you complete right away.
+
+### What to persist and when
+
+| Trigger | Action |
+|---------|--------|
+| Task assigned (multi-step) | Create MEMORY entry with all required fields **in the same turn** |
+| Igor makes a decision | Update task context **immediately** — don't batch, don't defer |
+| You send an SMS, email, or make a call | Update context with what was sent, to whom, and what you're waiting for |
+| You receive a reply or find new info | Update context with the new data **before** responding to Igor |
+| Igor corrects you or states a preference | Write to MEMORY § **Corrections** or § **Preferences** in the **same turn** |
+| Conversation goes quiet (Igor stops replying) | Review: is MEMORY current? If not, update now — the 4 AM restart is coming |
+| Task completes | Move to Completed Tasks **immediately** — don't leave it active |
 
 ### Required fields per task
 
@@ -115,18 +133,25 @@ Do NOT persist: one-shot questions, quick lookups, or tasks you complete right a
 | status      | `active` or `paused`                               |
 | context     | Everything needed to resume without asking the user |
 
-*Optional fields on the task (sibling bullets, same as **started** / **context**):* **`sms-watch`**, **`last-sms-baseline`**, **`last-sms-scan`** — see § SMS reply monitoring.
+**Context must be self-sufficient.** Test: could a fresh agent session — with zero
+memory of prior conversations — pick up this task and continue without asking Igor
+a single question? If not, the context is incomplete. Include: names, numbers, URLs,
+what was tried, what worked, what failed, what's pending, and what Igor decided.
 
-*Optional for Chrono24 / listing-watch tasks:* **`last-chrono-check`**, **`last-chrono-baseline`** — updated by **`chrono24-listing-monitor`** cron (`config/cron/jobs.json`).
+*Optional fields (sibling bullets):* **`sms-watch`**, **`last-sms-baseline`**, **`last-sms-scan`** — see § SMS reply monitoring.
+*Optional for listing-watch tasks:* **`last-chrono-check`**, **`last-chrono-baseline`** — updated by **`chrono24-listing-monitor`** cron.
 
 ### Lifecycle
 
 1. **Create** — write entry with all required fields the moment the task is assigned
-2. **Update** — keep context current as the task progresses (new messages, URLs, partial results)
-3. **Complete** — when done-when criteria are met, move to `Completed Tasks` with date and one-line outcome
+2. **Update** — update context after **every material step**: each call, email, SMS, browser action, research finding, or user decision. Do not batch. Do not defer.
+3. **Complete** — when done-when criteria are met, move to `Completed Tasks` immediately with date and one-line outcome. Remove monitoring fields (`sms-watch`, `last-chrono-baseline`, etc.)
 4. **Expire** — if today > expires and not done, set status to `paused` and notify the user: "Task X has been open for N days — **continue? y/n** (or **close** to archive)"
 5. **Staleness** — if no progress in 48 hours on an active task, notify the user and pause
-6. **No dangling interaction** — every active task must either (a) have a **monitoring path** (cron: `sms-reply-monitor`, `chrono24-listing-monitor`, `email-triage` + MEMORY keywords, `inbound-call-check`, etc.) or (b) be **completed** and moved to **Completed Tasks** with **`sms-watch` / listing-watch fields removed** when no longer needed. Do not leave tasks in ambiguous “waiting” state without updating MEMORY or notifying Igor (y/n).
+6. **No dangling threads** — every active task must have a clear **next step**:
+   - A **monitoring path** (cron: `sms-reply-monitor`, `chrono24-listing-monitor`, `email-triage` + MEMORY keywords, `inbound-call-check`)
+   - A **scheduled follow-up** (e.g. "check back Tuesday")
+   - Or it should be **completed/paused** — never leave a task in ambiguous "waiting" with no mechanism to detect progress
 
 ### On startup (post-restart cron at 4:05 AM)
 
@@ -141,7 +166,7 @@ Do NOT persist: one-shot questions, quick lookups, or tasks you complete right a
 Igor reports **Chrome windows/tabs staying open** after Clawd finishes. Treat this as a **priority bug** in your own behavior.
 
 1. **Same turn / same job:** The **last step** before you send your **final WhatsApp reply** (or end an isolated cron session) after using the browser tool **must** be **`browser close`** — whether the task **succeeded, failed, timed out, or was interrupted**.
-2. **No “I’ll close later”** — if you opened a browser tab, you close it **in that same run**, before moving on to unrelated tools or summarizing.
+2. **No "I'll close later"** — if you opened a browser tab, you close it **in that same run**, before moving on to unrelated tools or summarizing.
 3. **Cron / heartbeat / subagents:** Same rule. Subagents that use the browser **must** run **`browser close`** before returning to the parent session.
 4. **If unsure** whether a session is still open, run **`browser close` anyway** (should be safe/idempotent for the managed profile).
 5. **Post-failure:** After `browser failed` / timeout logs, still attempt **`browser close`** once, then report to Igor.
@@ -170,4 +195,4 @@ When spawning subagents:
 - Include links/references when reporting research findings
 - For code, show diffs or key changes rather than full files
 - When reporting task completion, include: what was done, what was skipped, any follow-ups needed
-- If follow-ups need Igor’s input, phrase them as **y/n** or **multiple choice** when practical (§ Questions to the user)
+- If follow-ups need Igor's input, phrase them as **y/n** or **multiple choice** when practical (§ Questions to the user)
