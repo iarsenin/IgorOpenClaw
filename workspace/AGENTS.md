@@ -52,10 +52,16 @@ Apply the same habit when **subagents** or automated flows must ask Igor somethi
 - Modifying system configuration (launchd, cron, shell profiles)
 - Deleting or permanently modifying Google Drive files (`gog drive delete`, `gog drive move`)
 - Sending emails (`gog gmail send`, `himalaya message send`) — always draft first, show the user, then send only after approval
-- Sending iMessages/SMS (`imessage.py send`) — always draft first, show the user, then send only after approval
-- Making phone calls (`vapi-call.py call`) — describe the call plan (who, why, what to say), **ask whether Riley may leave a callback number** if voicemail or they ask for a number, wait for approval before dialing; encode YES/NO in the task string per `workspace/TOOLS.md` § Phone Calls (default: do not leave a number if unclear)
+- Sending iMessages/SMS (`imessage.py send`) — always draft first, show the user, then send only after approval. **Each new message needs its own approval** — a prior approval for a different message or call does not carry over.
+- Making phone calls (`vapi-call.py call`) — describe the call plan (who, why, what to say), **ask whether Riley may leave a callback number** if voicemail or they ask for a number, wait for approval before dialing; encode YES/NO in the task string per `workspace/TOOLS.md` § Phone Calls (default: do not leave a number if unclear). **Each new call needs its own approval.**
 - Deleting emails (`gog gmail trash`, `gog gmail delete`)
 - Creating or modifying calendar events (`gog calendar create`, `gog calendar update`, `gog calendar delete`)
+
+### Ambiguous task-lifecycle phrases
+
+When Igor says **"finish X"**, **"close X"**, **"done with X"**, **"end X interaction"**, or similar — the default meaning is **close/archive the task** (move to Completed Tasks in MEMORY.md), NOT "execute the next pending step."
+
+If the context makes the intent genuinely unclear, **ask** (e.g. *"Close the task, or complete the pending action? **1)** close **2)** act"*). **Never** send a message, make a call, or take an outbound action based on an ambiguous lifecycle phrase.
 
 **OK to do autonomously:**
 - Reading files and web pages
