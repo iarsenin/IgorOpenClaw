@@ -67,8 +67,9 @@ IgorOpenClaw/
 └── scripts/
     ├── setup.sh           ← Bootstrap: copy config from template, symlink workspace+cron, daemon install
     ├── uninstall.sh       ← Teardown (remove symlinks, stop daemon, remove LaunchAgent)
+    ├── contacts.py        ← Apple Contacts lookup (searches all synced sources)
     ├── imessage.py        ← iMessage/SMS read & send helper (chat.db + AppleScript)
-    ├── whatsapp.py        ← WhatsApp message history reader (parses gateway logs)
+    ├── whatsapp.py        ← WhatsApp bridge message reader (parses gateway logs)
     ├── vapi-call.py       ← Outbound/inbound phone calls via Vapi AI voice agent
     └── api-spend-check.py ← Daily API spend report (OpenAI, Vapi, Cursor status)
 ```

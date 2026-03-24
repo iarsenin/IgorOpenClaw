@@ -163,6 +163,33 @@ truly need browser automation, use the `browser-automation` Playwright skill.
 
 - **chrono24.com** — Cloudflare returns HTTP 403 to `web_fetch` and `curl`. Always use `browser navigate` for Chrono24 pages.
 
+## Apple Contacts — via scripts/contacts.py
+
+Search and look up contacts from the local macOS AddressBook (all sources:
+iCloud, Google, Exchange). Requires Full Disk Access for **python3**.
+
+### Commands
+
+```bash
+REPO=~/Library/CloudStorage/GoogleDrive-igor.arsenin@gmail.com/My\ Drive/git/IgorOpenClaw
+
+# Search by name, phone, email, or organization
+python3 "$REPO/scripts/contacts.py" search "Neil Tancre"
+python3 "$REPO/scripts/contacts.py" search "850-490"
+python3 "$REPO/scripts/contacts.py" search "gmail.com"
+
+# Get full details for a specific contact
+python3 "$REPO/scripts/contacts.py" get "Neil Tancre"
+
+# List all contacts (alphabetical)
+python3 "$REPO/scripts/contacts.py" list --limit 50
+```
+
+### Rules
+- **Reading is autonomous** — "find X's number", "look up X" can be done without asking
+- This is the **preferred first step** when you need someone's phone number or email
+- Searches across all synced accounts (iCloud, Google, Exchange, etc.)
+
 ## iMessage / SMS — via scripts/imessage.py
 
 Read and send iMessages and SMS texts via the Messages.app database and AppleScript.
@@ -227,10 +254,11 @@ conversations with other people.
 - Search for a contact name in WhatsApp
 
 **To find a contact's phone number,** use (in order):
-1. `gog contacts ls --query "Name"` — Google Contacts
-2. `himalaya envelope list --query "from:name"` — search email for their number
-3. `python3 "$REPO/scripts/imessage.py" search "Name"` — search iMessage/SMS
-4. Ask Igor — he can share the contact card via WhatsApp
+1. `python3 "$REPO/scripts/contacts.py" search "Name"` — Apple Contacts (all sources: iCloud, Google, Exchange)
+2. `gog contacts ls --query "Name"` — Google Contacts via API
+3. `python3 "$REPO/scripts/imessage.py" search "Name"` — search iMessage/SMS history
+4. `himalaya envelope list --query "from:name"` — search email for their number
+5. Ask Igor — he can share the contact card via WhatsApp
 
 ### Commands
 

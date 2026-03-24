@@ -8,7 +8,7 @@
 | Email (read/send/triage) | himalaya CLI | gog gmail |
 | Calendar (read/create events) | gog calendar | manual instructions to user |
 | Google Drive (read/search) | gog drive | manual instructions to user |
-| Contacts lookup | gog contacts | manual instructions to user |
+| Contacts lookup | contacts.py (Apple Contacts) | gog contacts |
 | Coding / IDE work | cursor-ide-agent | shell (git, npm, etc.) |
 | File management | built-in (read_file, write_file) | shell |
 | iMessage / SMS (read/send) | imessage.py | manual instructions to user |
