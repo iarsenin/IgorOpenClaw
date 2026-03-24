@@ -212,28 +212,45 @@ python3 "$REPO/scripts/imessage.py" send "+19176997436" "Got it, thanks!"
 
 ## WhatsApp Message History — via scripts/whatsapp.py
 
-Read WhatsApp chat history from OpenClaw gateway logs. Covers messages
-from the past 7 days by default (adjustable with `--days`).
+Read **Clawd ↔ Igor bridge messages** from OpenClaw gateway logs. Covers the
+past 7 days by default (adjustable with `--days`).
+
+### CRITICAL LIMITATION
+
+`whatsapp.py` **only reads the bridge channel** (Igor's self-messages to/from
+Clawd on +19179752041). It does **NOT** have access to Igor's actual WhatsApp
+conversations with other people.
+
+**Do NOT use `whatsapp.py` to:**
+- Look up someone's WhatsApp number
+- Read Igor's chats with third parties
+- Search for a contact name in WhatsApp
+
+**To find a contact's phone number,** use (in order):
+1. `gog contacts ls --query "Name"` — Google Contacts
+2. `himalaya envelope list --query "from:name"` — search email for their number
+3. `python3 "$REPO/scripts/imessage.py" search "Name"` — search iMessage/SMS
+4. Ask Igor — he can share the contact card via WhatsApp
 
 ### Commands
 
 ```bash
 REPO=~/Library/CloudStorage/GoogleDrive-igor.arsenin@gmail.com/My\ Drive/git/IgorOpenClaw
 
-# List recent WhatsApp chats
+# List recent bridge chats (Igor ↔ Clawd only)
 python3 "$REPO/scripts/whatsapp.py" chats --limit 20
 
-# Read messages with a specific contact
+# Read bridge messages
 python3 "$REPO/scripts/whatsapp.py" read "+19176997436" --limit 20
 
-# Search WhatsApp messages
+# Search bridge message text
 python3 "$REPO/scripts/whatsapp.py" search "meeting tomorrow" --limit 10
 ```
 
 ### Rules
 - **Reading is autonomous** — "check my WhatsApp", "what did X say" can be done without asking
 - **Sending ALWAYS requires explicit user approval** — use the built-in `send_message` tool (see WhatsApp Messaging section below) only after showing draft and getting confirmation
-- Only covers messages since the gateway started logging (not full WhatsApp history)
+- Only covers **bridge** messages since the gateway started logging — NOT Igor's conversations with other contacts
 - "Check my messages" = iMessage/SMS; "Check my WhatsApp" = this tool
 - "Check all my messages" = iMessage/SMS + WhatsApp + email
 
