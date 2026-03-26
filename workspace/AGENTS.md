@@ -5,7 +5,7 @@
 | Task Type | Primary Skill | Fallback |
 |-----------|--------------|----------|
 | Web browsing / form filling | browser-automation | manual instructions to user |
-| Email (read/send/triage) | himalaya CLI | gog gmail |
+| Email (read/search) | email-search.py | gog gmail |
 | Calendar (read/create events) | gog calendar | manual instructions to user |
 | Google Drive (read/search) | gog drive | manual instructions to user |
 | Contacts lookup | contacts.py (Apple Contacts) | gog contacts |
@@ -70,7 +70,7 @@ If the context makes the intent genuinely unclear, **ask** (e.g. *"Close the tas
 - Searching the web for information
 - Creating files in the workspace directory
 - Updating MEMORY.md with learned patterns
-- Reading emails (`gog gmail ls`, `himalaya envelope list`, `himalaya message read`)
+- Reading emails (`email-search.py search`, `email-search.py read`)
 - Reading calendar (`gog calendar list`, `gog calendar get`)
 - Reading Drive files (`gog drive ls`, `gog drive get`)
 - Looking up contacts (`gog contacts ls`)
@@ -179,41 +179,20 @@ MEMORY.md is loaded into the context window every turn. Bloat = wasted tokens + 
 4. If context is insufficient to resume, message the user for clarification
 5. Respect quiet hours — if it's before 7 AM, queue notifications for the morning briefing
 
-## Browser hygiene (managed Chrome / Playwright)
+## Browser hygiene
 
-Igor reports **Chrome windows/tabs staying open** after Clawd finishes. Treat this as a **priority bug** in your own behavior.
-
-1. **Same turn / same job:** The **last step** before you send your **final WhatsApp reply** (or end an isolated cron session) after using the browser tool **must** be **`browser close`** — whether the task **succeeded, failed, timed out, or was interrupted**.
-2. **No "I'll close later"** — if you opened a browser tab, you close it **in that same run**, before moving on to unrelated tools or summarizing.
-3. **Cron / heartbeat / subagents:** Same rule. Subagents that use the browser **must** run **`browser close`** before returning to the parent session.
-4. **If unsure** whether a session is still open, run **`browser close` anyway** (should be safe/idempotent for the managed profile).
-5. **Post-failure:** After `browser failed` / timeout logs, still attempt **`browser close`** once, then report to Igor.
-
-See `TOOLS.md` § Browser Rules. `post-restart-resume` and `system-health` crons also nudge **`browser close`** for orphan tabs.
-
-## Delegation Rules
-
-When spawning subagents:
-- Subagents inherit AGENTS.md and TOOLS.md (not SOUL.md, USER.md, or MEMORY.md) — so they still follow **Questions to the user** (y/n and multiple choice when practical) and **Browser hygiene**
-- Subagents must not access credentials directly; pass only what they need
-- Long-running subagent tasks should use isolated sessions to avoid blocking chat
-- Report subagent results back to the main session with a summary
+**Always run `browser close` as the LAST step** after any browser use — success, failure, or timeout. No exceptions. Subagents too.
 
 ## Error Handling
 
-- If a skill fails, log the error and notify the user with a concise explanation
-- If a browser automation fails mid-flow, take a screenshot, run `browser close`, and report what happened
-- **Always** run `browser close` at the end of any browser task, even if it failed (see § Browser hygiene)
-- Never retry a failed payment or submission without user confirmation
-- If unsure whether an action is safe, ask rather than guess — use **y/n** or **multiple choice** when practical (see § Questions to the user)
+- If a tool/skill fails, notify the user concisely.
+- Never retry a failed payment or submission without user confirmation.
+- If unsure, ask (y/n or A/B/C).
 
 ## Output Preferences
 
-- Use concise bullet points for summaries
-- Include links/references when reporting research findings
-- For code, show diffs or key changes rather than full files
-- When reporting task completion, include: what was done, what was skipped, any follow-ups needed
-- If follow-ups need Igor's input, phrase them as **y/n** or **multiple choice** when practical (§ Questions to the user)
+- Concise bullet points. Links when useful.
+- Task completion: what was done, what was skipped, follow-ups needed.
 
 ### No routine housekeeping noise
 
@@ -224,6 +203,7 @@ Igor does **not** want to see status messages about normal, successful internal 
 - Browser close confirmations ("Ran `browser close` to clear…")
 - Cron jobs completing normally with no user-relevant findings
 - Routine system-health checks that find nothing wrong
+- "No new inbound calls", "No new emails", or any absence-of-activity messages
 - SSL handshakes, API auth renewals, or other plumbing that worked
 
 **DO report** (something is broken or needs attention):
@@ -232,3 +212,18 @@ Igor does **not** want to see status messages about normal, successful internal 
 - API errors or auth failures that block a task
 - Disk space, connectivity, or permission problems
 - Anything that requires Igor to take action
+
+### Self-echo rule (WhatsApp bridge)
+
+When you send a WhatsApp message, it appears back in the chat as `(self)`. **This is an echo, not a new message from Igor.** Rules:
+1. **Never reply to a `(self)` message.** It is your own message bounced back.
+2. **Never re-send content** you see in a `(self)` echo.
+3. **In cron sessions:** after sending your WhatsApp message, **STOP the session immediately.** Do not process any further messages.
+
+### Cron job behavior
+
+Cron jobs run in **isolated sessions**. Follow these rules:
+1. **Empty output = silence:** If a script you ran produced no output, end the session immediately. Do not send any message.
+2. **SILENT by default:** Unless the cron message says "always send," your default is to send **zero messages**. Only send if you found something actionable.
+3. **One message max:** In a cron session, send at most ONE WhatsApp message, then STOP.
+4. **No status confirmations:** Never send "all clear", "nothing to report", "checked, no issues", "no action", or similar. Igor only wants to hear from you when action is needed.

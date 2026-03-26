@@ -48,7 +48,7 @@ def ssl_ctx():
         return ssl.create_default_context()
 
 
-def fetch(url, headers, ctx, timeout=15):
+def fetch(url, headers, ctx, timeout=30):
     req = urllib.request.Request(url, headers=headers)
     try:
         with urllib.request.urlopen(req, context=ctx, timeout=timeout) as r:
@@ -59,23 +59,44 @@ def fetch(url, headers, ctx, timeout=15):
 
 # ── OpenAI ────────────────────────────────────────────────────────────────────
 
-def openai_spend(admin_key, ctx):
-    start = int(time.time() - 86400)
-    end   = int(time.time())
-    hdrs  = {"Authorization": f"Bearer {admin_key}"}
-
-    cost_data = fetch(
-        f"https://api.openai.com/v1/organization/costs?start_time={start}&end_time={end}&limit=100",
-        hdrs, ctx)
-    total = sum(
+def _sum_costs(cost_data):
+    return sum(
         float((r.get("amount") or {}).get("value", 0))
         for b in cost_data.get("data", [])
         for r in b.get("results", [])
     )
 
+
+def openai_spend(admin_key, ctx):
+    """Return (yesterday_total, prev_day_total, mtd_total, model_str)."""
+    hdrs = {"Authorization": f"Bearer {admin_key}"}
+    now = datetime.now(timezone.utc)
+    today_midnight = int(now.replace(hour=0, minute=0, second=0, microsecond=0).timestamp())
+    yesterday_midnight = today_midnight - 86400
+    prev_day_midnight = yesterday_midnight - 86400
+    month_start = int(now.replace(day=1, hour=0, minute=0, second=0, microsecond=0).timestamp())
+
+    yesterday_costs = fetch(
+        f"https://api.openai.com/v1/organization/costs"
+        f"?start_time={yesterday_midnight}&end_time={today_midnight}&limit=100",
+        hdrs, ctx)
+    prev_day_costs = fetch(
+        f"https://api.openai.com/v1/organization/costs"
+        f"?start_time={prev_day_midnight}&end_time={yesterday_midnight}&limit=100",
+        hdrs, ctx)
+    mtd_costs = fetch(
+        f"https://api.openai.com/v1/organization/costs"
+        f"?start_time={month_start}&end_time={today_midnight}&limit=100",
+        hdrs, ctx)
+
+    yesterday_total = _sum_costs(yesterday_costs)
+    prev_day_total = _sum_costs(prev_day_costs)
+    mtd_total = _sum_costs(mtd_costs)
+
     usage_data = fetch(
         f"https://api.openai.com/v1/organization/usage/completions"
-        f"?start_time={start}&end_time={end}&bucket_width=1d&group_by=model&limit=31",
+        f"?start_time={yesterday_midnight}&end_time={today_midnight}"
+        f"&bucket_width=1d&group_by=model&limit=31",
         hdrs, ctx)
     by_model = {}
     for b in usage_data.get("data", []):
@@ -91,7 +112,7 @@ def openai_spend(admin_key, ctx):
         for m, (i, o) in sorted(by_model.items(), key=lambda x: -(x[1][0] + x[1][1]))
     ) or "no model detail"
 
-    return total, model_str
+    return yesterday_total, prev_day_total, mtd_total, model_str
 
 
 # ── Vapi ──────────────────────────────────────────────────────────────────────
@@ -156,17 +177,37 @@ def cursor_status(ctx):
 
 # ── Main ──────────────────────────────────────────────────────────────────────
 
+def _delta_str(current, previous):
+    diff = current - previous
+    if diff == 0:
+        return "flat"
+    sign = "+" if diff > 0 else ""
+    return f"{sign}${diff:.2f}"
+
+
 def main():
     env = load_env()
     ctx = ssl_ctx()
-    lines = ["💰 API Spend — last 24h"]
+
+    now = datetime.now(timezone.utc)
+    yesterday = (now - timedelta(days=1)).strftime("%b %-d")
+
+    lines = [f"💰 API Spend Report"]
+
+    oai_yesterday = 0.0
+    vapi_yesterday = 0.0
 
     # OpenAI
     admin_key = env.get("OPENAI_ADMIN_KEY", "")
     if admin_key:
         try:
-            total, models = openai_spend(admin_key, ctx)
-            lines.append(f"OpenAI: ${total:.2f}  ({models})")
+            yday, prev, mtd, models = openai_spend(admin_key, ctx)
+            oai_yesterday = yday
+            lines.append(
+                f"OpenAI yesterday ({yesterday}): ${yday:.2f}"
+                f"  ({_delta_str(yday, prev)} vs prior day)"
+            )
+            lines.append(f"  MTD: ${mtd:.2f}  |  Models: {models}")
         except Exception as e:
             lines.append(f"OpenAI: fetch error ({e})")
     else:
@@ -177,11 +218,12 @@ def main():
     if vapi_key:
         try:
             total, count = vapi_spend(vapi_key, ctx)
-            lines.append(f"Vapi:   ${total:.2f}  ({count} call(s))")
+            vapi_yesterday = total
+            lines.append(f"Vapi (last 24h): ${total:.2f}  ({count} call(s))")
         except Exception as e:
-            lines.append(f"Vapi:   fetch error ({e})")
+            lines.append(f"Vapi: fetch error ({e})")
     else:
-        lines.append("Vapi:   VAPI_API_KEY not set")
+        lines.append("Vapi: VAPI_API_KEY not set")
 
     # Cursor
     try:
@@ -192,7 +234,7 @@ def main():
                 note = "  ⚠️ PAYMENT FAILED"
             elif cancels:
                 note = f"  ⚠️ cancels {cancels[:10]}"
-            lines.append(f"Cursor: {plan} / {status}{note} — usage charges: cursor.com/settings")
+            lines.append(f"Cursor: {plan} / {status}{note}")
         else:
             lines.append("Cursor: token unavailable (open Cursor to refresh)")
     except Exception as e:
@@ -200,13 +242,9 @@ def main():
 
     lines.append("Gemini: check GCP Console (no billing API via key)")
 
-    # Total
-    try:
-        oai = float([l for l in lines if l.startswith("OpenAI:")][0].split("$")[1].split()[0])
-        vap = float([l for l in lines if l.startswith("Vapi:")][0].split("$")[1].split()[0])
-        lines.append(f"Total billed (OpenAI+Vapi): ${oai+vap:.2f}")
-    except Exception:
-        pass
+    total = oai_yesterday + vapi_yesterday
+    if total > 0:
+        lines.append(f"Total yesterday (OpenAI+Vapi): ${total:.2f}")
 
     print("\n".join(lines))
 

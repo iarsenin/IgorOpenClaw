@@ -27,6 +27,12 @@
     ],
   },
 
+  tools: {
+    elevated: {
+      enabled: true,
+    },
+  },
+
   commands: {
     native: "auto",
     nativeSkills: "auto",

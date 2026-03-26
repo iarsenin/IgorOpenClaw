@@ -68,10 +68,13 @@ IgorOpenClaw/
     ├── setup.sh           ← Bootstrap: copy config from template, symlink workspace+cron, daemon install
     ├── uninstall.sh       ← Teardown (remove symlinks, stop daemon, remove LaunchAgent)
     ├── contacts.py        ← Apple Contacts lookup (searches all synced sources)
+    ├── email-search.py    ← Email search wrapper (standard flags, searches both Gmail+Yahoo)
     ├── imessage.py        ← iMessage/SMS read & send helper (chat.db + AppleScript)
     ├── whatsapp.py        ← WhatsApp bridge message reader (parses gateway logs)
     ├── vapi-call.py       ← Outbound/inbound phone calls via Vapi AI voice agent
-    └── api-spend-check.py ← Daily API spend report (OpenAI, Vapi, Cursor status)
+    ├── api-spend-check.py ← Daily API spend report (OpenAI, Vapi, Cursor status)
+    ├── system-health-check.py ← Gateway/disk/error health check (silent when healthy)
+    └── daily-restart.sh   ← Daily gateway restart via launchd (4 AM ET)
 ```
 
 ## Quick Start

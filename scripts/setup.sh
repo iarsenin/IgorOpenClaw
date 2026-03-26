@@ -91,6 +91,15 @@ if [ -f "$REPO_DIR/config/cron/jobs.json" ]; then
     echo "Linked: config/cron/jobs.json -> $CRON_DIR/jobs.json"
 fi
 
+# --- Copy scripts locally (Google Drive files have com.apple.provenance which blocks launchd) ---
+SCRIPTS_DIR="$OPENCLAW_DIR/scripts"
+mkdir -p "$SCRIPTS_DIR"
+if [ -f "$REPO_DIR/scripts/daily-restart.sh" ]; then
+    cp "$REPO_DIR/scripts/daily-restart.sh" "$SCRIPTS_DIR/daily-restart.sh"
+    chmod +x "$SCRIPTS_DIR/daily-restart.sh"
+    echo "Copied: scripts/daily-restart.sh -> $SCRIPTS_DIR/"
+fi
+
 # --- Install daemon if not already installed ---
 echo ""
 echo "Checking daemon status..."
@@ -118,6 +127,8 @@ fi
 PLIST="$HOME/Library/LaunchAgents/ai.openclaw.gateway.plist"
 if [ -f "$PLIST" ] && [ -f "$REPO_DIR/.env" ]; then
     echo "Injecting API keys into LaunchAgent plist..."
+    /usr/libexec/PlistBuddy -c "Delete :EnvironmentVariables:OPENCLAW_REPO" "$PLIST" 2>/dev/null || true
+    /usr/libexec/PlistBuddy -c "Add :EnvironmentVariables:OPENCLAW_REPO string '$REPO_DIR'" "$PLIST"
     for VAR in OPENAI_API_KEY OPENAI_ADMIN_KEY GOOGLE_API_KEY GEMINI_API_KEY GMAIL_USER GMAIL_APP_PASSWORD YAHOO_USER YAHOO_APP_PASSWORD ALPHA_VANTAGE_KEY HUGGING_FACE_TOKEN VAPI_API_KEY VAPI_ASSISTANT_ID VAPI_PHONE_NUMBER_ID VAPI_PHONE_NUMBER GOG_KEYRING_PASSWORD TZ; do
         VAL="${!VAR:-}"
         if [ -n "$VAL" ]; then

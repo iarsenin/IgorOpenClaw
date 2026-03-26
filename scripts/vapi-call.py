@@ -69,6 +69,10 @@ def _ssl_context():
         return ssl.create_default_context()
 
 
+class VapiError(RuntimeError):
+    """Raised when a Vapi API call fails."""
+
+
 def api_request(method, path, data=None):
     api_key = get_env("VAPI_API_KEY")
     url = f"{API_BASE}{path}"
@@ -80,12 +84,13 @@ def api_request(method, path, data=None):
     body = json.dumps(data).encode() if data else None
     req = urllib.request.Request(url, data=body, headers=headers, method=method)
     try:
-        with urllib.request.urlopen(req, context=_ssl_context()) as resp:
+        with urllib.request.urlopen(req, context=_ssl_context(), timeout=30) as resp:
             return json.loads(resp.read().decode())
     except urllib.error.HTTPError as e:
         error_body = e.read().decode()
-        print(f"ERROR: API returned {e.code}: {error_body}", file=sys.stderr)
-        sys.exit(1)
+        raise VapiError(f"API returned {e.code}: {error_body[:200]}")
+    except urllib.error.URLError as e:
+        raise VapiError(f"Network error: {e.reason}")
 
 
 def cmd_call(number, task_instructions):
@@ -93,7 +98,6 @@ def cmd_call(number, task_instructions):
     assistant_id = get_env("VAPI_ASSISTANT_ID")
     phone_number_id = get_env("VAPI_PHONE_NUMBER_ID")
 
-    # Clean phone number
     number = number.strip()
     if not number.startswith("+"):
         number = f"+1{number}" if len(number) == 10 else f"+{number}"
@@ -125,22 +129,32 @@ def cmd_call(number, task_instructions):
         }
     }
 
-    result = api_request("POST", "/call", payload)
+    try:
+        result = api_request("POST", "/call", payload)
+    except VapiError as e:
+        print(f"ERROR: {e}", file=sys.stderr)
+        sys.exit(1)
+
     call_id = result.get("id", "unknown")
     status = result.get("status", "unknown")
+
+    _add_pending(call_id, number)
 
     print(f"Call initiated!")
     print(f"  Call ID: {call_id}")
     print(f"  Status: {status}")
     print(f"  To: {number}")
-    print(f"  From: {os.environ.get('VAPI_PHONE_NUMBER', '+19179628631')}")
-    print(f"\nCheck status with: vapi-call.py status {call_id}")
+    print(f"\nCall will be tracked automatically. The next inbound-check cycle will report the outcome.")
     return call_id
 
 
 def cmd_status(call_id):
     """Get call status, transcript, and structured output."""
-    result = api_request("GET", f"/call/{call_id}")
+    try:
+        result = api_request("GET", f"/call/{call_id}")
+    except VapiError as e:
+        print(f"ERROR: {e}", file=sys.stderr)
+        sys.exit(1)
 
     status = result.get("status", "unknown")
     duration = result.get("duration")
@@ -185,7 +199,11 @@ def cmd_status(call_id):
 
 def cmd_list(limit=10):
     """List recent calls."""
-    result = api_request("GET", f"/call?limit={limit}")
+    try:
+        result = api_request("GET", f"/call?limit={limit}")
+    except VapiError as e:
+        print(f"ERROR: {e}", file=sys.stderr)
+        sys.exit(1)
 
     if not result:
         print("No calls found.")
@@ -207,10 +225,10 @@ def cmd_list(limit=10):
         print(f"{cid:<40} {status:<12} {to_num:<16} {dur_str:>8}  {cost_str:>8}")
 
 
-SEEN_FILE = os.path.join(
-    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-    ".vapi-seen-calls"
-)
+_REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+SEEN_FILE = os.path.join(_REPO_ROOT, ".vapi-seen-calls")
+PENDING_FILE = os.path.join(_REPO_ROOT, ".vapi-pending-outbound")
 
 
 def _load_seen():
@@ -232,11 +250,43 @@ def _save_seen(seen):
             f.write(cid + "\n")
 
 
+def _add_pending(call_id, to_number):
+    """Track an outbound call that needs follow-up."""
+    with open(PENDING_FILE, "a") as f:
+        f.write(f"{call_id} {to_number}\n")
+
+
+def _load_pending():
+    """Return list of (call_id, to_number) still pending."""
+    if not os.path.exists(PENDING_FILE):
+        return []
+    entries = []
+    with open(PENDING_FILE) as f:
+        for line in f:
+            parts = line.strip().split(None, 1)
+            if parts:
+                entries.append((parts[0], parts[1] if len(parts) > 1 else "?"))
+    return entries
+
+
+def _save_pending(entries):
+    with open(PENDING_FILE, "w") as f:
+        for cid, num in entries:
+            f.write(f"{cid} {num}\n")
+
+
 def cmd_inbound_check():
-    """Check for new inbound calls and print summaries for unseen ones."""
-    result = api_request("GET", "/call?limit=20")
+    """Check for new inbound calls AND completed outbound calls pending report."""
+    try:
+        result = api_request("GET", "/call?limit=20")
+    except VapiError as e:
+        print(f"ERROR: Cannot reach Vapi API: {e}", file=sys.stderr)
+        sys.exit(1)
     calls = result if isinstance(result, list) else result.get("results", result.get("data", []))
 
+    has_output = False
+
+    # --- Inbound calls ---
     seen = _load_seen()
     new_inbound = []
 
@@ -255,33 +305,84 @@ def cmd_inbound_check():
         new_inbound.append(call)
         seen.add(cid)
 
-    if not new_inbound:
-        print("No new inbound calls.")
-        _save_seen(seen)
-        return
+    if new_inbound:
+        has_output = True
+        print(f"ALERT: NEW INBOUND CALLS: {len(new_inbound)}\n")
+        for call in new_inbound:
+            cid = call.get("id", "?")
+            customer = call.get("customer", {})
+            caller_num = customer.get("number", "unknown") if isinstance(customer, dict) else "unknown"
+            duration = call.get("duration")
+            analysis = call.get("analysis", {})
+            summary = analysis.get("summary", "")
+            structured = analysis.get("structuredData", {})
 
-    print(f"NEW INBOUND CALLS: {len(new_inbound)}\n")
-    for call in new_inbound:
-        cid = call.get("id", "?")
-        customer = call.get("customer", {})
-        caller_num = customer.get("number", "unknown") if isinstance(customer, dict) else "unknown"
-        duration = call.get("duration")
-        analysis = call.get("analysis", {})
-        summary = analysis.get("summary", "")
-        structured = analysis.get("structuredData", {})
-
-        print(f"  Call ID: {cid}")
-        print(f"  From: {caller_num}")
-        if duration:
-            print(f"  Duration: {duration}s")
-        if summary:
-            print(f"  Summary: {summary}")
-        if structured:
-            for key, val in structured.items():
-                print(f"  {key}: {val}")
-        print()
+            print(f"  Call ID: {cid}")
+            print(f"  From: {caller_num}")
+            if duration:
+                print(f"  Duration: {duration}s")
+            if summary:
+                print(f"  Summary: {summary}")
+            if structured:
+                for key, val in structured.items():
+                    print(f"  {key}: {val}")
+            print()
 
     _save_seen(seen)
+
+    # --- Pending outbound calls ---
+    pending = _load_pending()
+    still_pending = []
+
+    for cid, to_num in pending:
+        try:
+            call_data = api_request("GET", f"/call/{cid}")
+        except Exception:
+            still_pending.append((cid, to_num))
+            continue
+
+        status = call_data.get("status", "unknown")
+        if status not in ("ended",):
+            still_pending.append((cid, to_num))
+            continue
+
+        has_output = True
+        duration = call_data.get("duration")
+        ended_reason = call_data.get("endedReason", "")
+        analysis = call_data.get("analysis", {})
+        summary = analysis.get("summary", "")
+        transcript = call_data.get("transcript", "")
+        cost = call_data.get("cost")
+
+        print(f"ALERT: COMPLETED OUTBOUND CALL:")
+        print(f"  Call ID: {cid}")
+        print(f"  To: {to_num}")
+        if duration:
+            print(f"  Duration: {duration}s ({duration/60:.1f} min)")
+        if ended_reason:
+            print(f"  Ended: {ended_reason}")
+        if cost:
+            print(f"  Cost: ${cost:.4f}")
+        if summary:
+            print(f"  Summary: {summary}")
+        if transcript:
+            print(f"  Transcript: {transcript[:500]}")
+        elif call_data.get("messages"):
+            lines = []
+            for msg in call_data["messages"]:
+                role = msg.get("role", "?")
+                text = msg.get("message") or msg.get("content", "")
+                if text:
+                    label = "Riley" if role in ("assistant", "bot") else "Caller"
+                    lines.append(f"    [{label}]: {text}")
+            if lines:
+                print(f"  Transcript:\n" + "\n".join(lines[:20]))
+        print()
+
+    _save_pending(still_pending)
+
+    if not has_output:
+        return
 
 
 def main():
