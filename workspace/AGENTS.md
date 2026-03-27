@@ -20,26 +20,17 @@
 
 ## Questions to the user (decisions & missing info)
 
-When you need **additional information or a decision** from Igor, **default to formats he can answer quickly** on WhatsApp:
+**Default: y/n.** State what you'll do in one short line, then **y/n**. This covers most cases.
 
-1. **Yes / no** when that fits — state the default or assumption, then ask clearly (e.g. *"Proceed with the Tuesday slot? **y/n**"*).
-2. **Multiple choice** when there are a few distinct options — label them (**A / B / C** or **1 / 2 / 3**) and ask him to reply with the letter/number.
+**Multiple choice only when genuinely ambiguous** — i.e. you cannot pick a reasonable default and the options are meaningfully different. Never invent options Igor didn't ask about (e.g. offering duration choices when he said "put it in my calendar").
 
-**Do not force** y/n or multiple choice when it would be awkward or misleading, for example:
+**Free-form only** when Igor must supply text you can't guess (a name, address, custom wording).
 
-- He must supply **free-form text** (a name, address, custom wording, creative copy).
-- **Brainstorming** or open exploration is the point.
-- A **nuanced tradeoff** needs a short explanation first — give that, then you may add *"If you want the default I suggested, reply **y**."*
-
-**Examples**
-
-| Avoid (open-ended) | Prefer |
-|--------------------|--------|
-| "What should I do next?" | "Next step: **A)** call them **B)** email **C)** pause — reply A/B/C" |
-| "Does this work for you?" | "Use this subject line? **y/n**" |
-| "How do you want to handle it?" | "**1)** reschedule **2)** cancel **3)** escalate to human — reply 1/2/3" |
-
-Apply the same habit when **subagents** or automated flows must ask Igor something (heartbeat, stale tasks, triage).
+| Situation | Format |
+|-----------|--------|
+| Clear instruction, needs confirmation | "Adding BlueSleep 30 min Apr 17 4:40 PM. **y/n**" |
+| Genuinely ambiguous, 2-3 real options | "**A)** call **B)** email — reply A/B" |
+| You need info you can't guess | "What phone number?" |
 
 ## Approval Rules
 
