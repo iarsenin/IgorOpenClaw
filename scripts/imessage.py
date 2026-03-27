@@ -203,31 +203,58 @@ def _escape_applescript(s):
 
 
 def cmd_send(number, message):
-    """Send a message via Messages.app AppleScript."""
+    """Send a message via Messages.app AppleScript.
+
+    Tries existing chat-id first, then buddy-of-service for new threads.
+    Service order: iMessage, SMS — covers iMessage, SMS, and RCS.
+    """
     safe_number = _escape_applescript(number)
     safe_message = _escape_applescript(message)
+    last_err = ""
 
-    for service in ("iMessage", "SMS"):
+    # SMS first for phone numbers (routes to RCS when available).
+    # iMessage buddy-send can silently fail for non-Apple recipients.
+    for service in ("SMS", "iMessage"):
+        # Attempt 1: existing chat thread
         script = (
             'tell application "Messages"\n'
             f'    set targetChat to a reference to chat id "{service};-;{safe_number}"\n'
             f'    send "{safe_message}" to targetChat\n'
             'end tell'
         )
-        try:
-            result = subprocess.run(
-                ["osascript", "-e", script],
-                capture_output=True, text=True, timeout=10
-            )
-            if result.returncode == 0:
-                print(f"Sent to {number} via {service}")
-                return
-        except subprocess.TimeoutExpired:
-            print("ERROR: Messages.app timed out", file=sys.stderr)
-            sys.exit(1)
+        ok, err = _run_osascript(script)
+        if ok:
+            print(f"Sent to {number} via {service}")
+            return
+        last_err = err
 
-    print(f"ERROR: Could not send via iMessage or SMS. {result.stderr.strip()}", file=sys.stderr)
+        # Attempt 2: buddy of service (creates new thread)
+        script = (
+            'tell application "Messages"\n'
+            f'    set targetService to 1st service whose service type is {service}\n'
+            f'    send "{safe_message}" to buddy "{safe_number}" of targetService\n'
+            'end tell'
+        )
+        ok, err = _run_osascript(script)
+        if ok:
+            print(f"Sent to {number} via {service} (new thread)")
+            return
+        last_err = err
+
+    print(f"ERROR: Could not send via iMessage or SMS. {last_err}", file=sys.stderr)
     sys.exit(1)
+
+
+def _run_osascript(script):
+    """Run an AppleScript, return (success: bool, stderr: str)."""
+    try:
+        result = subprocess.run(
+            ["osascript", "-e", script],
+            capture_output=True, text=True, timeout=15
+        )
+        return result.returncode == 0, result.stderr.strip()
+    except subprocess.TimeoutExpired:
+        return False, "timeout"
 
 
 def main():

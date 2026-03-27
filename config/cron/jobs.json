@@ -61,7 +61,7 @@
       "wakeMode": "now",
       "payload": {
         "kind": "agentTurn",
-        "message": "Chrono24 monitor.\n1. Read MEMORY.md. If no active Chrono24 task, STOP immediately.\n2. Use `browser navigate` (NOT web_fetch — Chrono24 blocks it) to check the listing URL from MEMORY context.\n3. Compare to last-chrono-baseline in MEMORY.\n4. Update MEMORY: last-chrono-check + last-chrono-baseline.\n5. Run `browser close`.\n\nOnly WhatsApp Igor if: listing went live, buyer message/offer, or material status change. If unchanged, STOP — do not send any message at all.\n\nQuiet hours 11 PM–7 AM: defer to morning briefing.",
+        "message": "Chrono24 monitor.\n1. Read MEMORY.md. If no active Chrono24 task, STOP immediately.\n2. Run `browser close` first to clear stale state (ignore errors).\n3. Use `browser navigate` (NOT web_fetch — Chrono24 blocks it) to check the listing URL from MEMORY context. If the browser command fails, wait 10 seconds and retry ONCE.\n4. Compare to last-chrono-baseline in MEMORY.\n5. Update MEMORY: last-chrono-check + last-chrono-baseline.\n6. Run `browser close`.\n\nOnly WhatsApp Igor if: listing went live, buyer message/offer, or material status change. If unchanged or if browser failed after retry, STOP — do not send any message at all.\n\nQuiet hours 11 PM–7 AM: defer to morning briefing.",
         "timeoutSeconds": 600
       }
     },

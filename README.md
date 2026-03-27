@@ -103,10 +103,14 @@ For the full step-by-step walkthrough, see [SETUP_GUIDE.md](SETUP_GUIDE.md).
 
 ## Configuration
 
-Configuration lives in `config/openclaw.json.template`. The auth token uses a `__OPENCLAW_AUTH_TOKEN__` placeholder — `scripts/setup.sh` copies the template to `~/.openclaw/openclaw.json` and injects the real token from `.env`. After editing the template, re-run setup and restart:
+Configuration lives in `config/openclaw.json.template`. The auth token uses a `__OPENCLAW_AUTH_TOKEN__` placeholder — `scripts/setup.sh` copies the template to `~/.openclaw/openclaw.json` and injects the real token from `.env`.
+
+`setup.sh` also injects all API keys and environment variables from `.env` into the LaunchAgent plist so they are available to the gateway process and cron scripts. This is critical — running `openclaw doctor --fix` will reinstall the plist and wipe these injected variables. Always re-run `bash scripts/setup.sh` after `doctor --fix`.
+
+After editing the template or `.env`, re-run setup:
 
 ```bash
-openclaw gateway restart
+bash scripts/setup.sh    # re-injects config, env vars, and restarts gateway
 ```
 
 Agent workspace files (`workspace/*.md`) take effect on the next agent turn without a restart.

@@ -100,14 +100,11 @@ if [ -f "$REPO_DIR/scripts/daily-restart.sh" ]; then
     echo "Copied: scripts/daily-restart.sh -> $SCRIPTS_DIR/"
 fi
 
-# --- Install daemon if not already installed ---
+# --- Install daemon (creates plist if missing) ---
 echo ""
 echo "Checking daemon status..."
-if openclaw gateway status &>/dev/null; then
-    echo "Gateway is already running. Restarting..."
-    openclaw gateway restart
-else
-    echo "Installing and starting the OpenClaw daemon..."
+if ! openclaw gateway status &>/dev/null; then
+    echo "Installing the OpenClaw daemon..."
     openclaw gateway install
 fi
 
@@ -123,7 +120,7 @@ if [ -f "$OPENCLAW_DIR/openclaw.json" ]; then
     fi
 fi
 
-# --- Inject API keys into LaunchAgent plist ---
+# --- Inject API keys into LaunchAgent plist (BEFORE starting gateway) ---
 PLIST="$HOME/Library/LaunchAgents/ai.openclaw.gateway.plist"
 if [ -f "$PLIST" ] && [ -f "$REPO_DIR/.env" ]; then
     echo "Injecting API keys into LaunchAgent plist..."
@@ -136,12 +133,14 @@ if [ -f "$PLIST" ] && [ -f "$REPO_DIR/.env" ]; then
             /usr/libexec/PlistBuddy -c "Add :EnvironmentVariables:$VAR string $VAL" "$PLIST"
         fi
     done
-    echo "Reloading LaunchAgent..."
-    launchctl unload "$PLIST" 2>/dev/null || true
-    sleep 2
-    launchctl load "$PLIST"
-    sleep 3
 fi
+
+# --- (Re)start gateway with env vars already in plist ---
+echo "Starting gateway..."
+launchctl unload "$PLIST" 2>/dev/null || true
+sleep 2
+launchctl load "$PLIST"
+sleep 3
 
 echo ""
 echo "=== Setup Complete ==="
