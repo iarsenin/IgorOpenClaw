@@ -55,7 +55,7 @@ Apply the same habit when **subagents** or automated flows must ask Igor somethi
 - Sending iMessages/SMS (`imessage.py send`) — always draft first, show the user, then send only after approval. **Each new message needs its own approval** — a prior approval for a different message or call does not carry over.
 - Making phone calls (`vapi-call.py call`) — describe the call plan (who, why, what to say), **ask whether Riley may leave a callback number** if voicemail or they ask for a number, wait for approval before dialing; encode YES/NO in the task string per `workspace/TOOLS.md` § Phone Calls (default: do not leave a number if unclear). **Each new call needs its own approval.**
 - Deleting emails (`gog gmail trash`, `gog gmail delete`)
-- Creating or modifying calendar events (`gog calendar create`, `gog calendar update`, `gog calendar delete`) — **exception:** when Igor directly asks you to create/add an event (e.g. "put X in my calendar"), that instruction IS the approval — just create it immediately without asking for confirmation
+- Creating or modifying calendar events (`gog calendar create`, `gog calendar update`, `gog calendar delete`) — when Igor asks you to create an event, confirm with a short **y/n** (e.g. "Adding BlueSleep 30 min Apr 17 4:40 PM. **y/n**"). Don't offer duration options or alternative formats — just state what you'll create and ask y/n
 
 ### Ambiguous task-lifecycle phrases
 
