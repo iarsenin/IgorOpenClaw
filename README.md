@@ -117,7 +117,21 @@ Agent workspace files (`workspace/*.md`) take effect on the next agent turn with
 
 ## Troubleshooting
 
-- **`restored corrupted WhatsApp creds.json` repeating in `/tmp/openclaw/openclaw-*.log`** — the WhatsApp Web session file is unstable (often alongside `status 499` disconnects). Re-pair the channel: `openclaw channels add --channel whatsapp`, ensure a single gateway instance, and check disk space. `scripts/system-health-check.py` alerts only when several restores occur within the **last 2 hours** (so old log noise alone does not keep firing). The script exits **1** when it prints alerts, **0** when healthy.
+### WhatsApp creds restore loop (health check ALERT)
+
+If `python3 scripts/system-health-check.py` reports *WhatsApp creds.json restore loop in the last 2h*, the gateway is repeatedly fixing a broken session file — that is a **live** problem, not a stale log. The check exits **1** in that case; it exits **0** when there is no output.
+
+**Recovery (do in order):**
+
+1. **One gateway only** — `pgrep -fl "dist/index.js gateway"` should show a single main process. If you see duplicates, unload extras: `launchctl unload ~/Library/LaunchAgents/ai.openclaw.gateway.plist`, then `launchctl load …` once.
+2. **Re-pair WhatsApp** — `openclaw channels add --channel whatsapp` and complete QR / linking on the Mac (session must finish successfully).
+3. **Restart gateway** — `openclaw gateway restart` (or `bash scripts/setup.sh` if you also need plist env vars).
+4. **Re-check** — wait a few minutes, then run `python3 scripts/system-health-check.py` again. After restores stop, the rolling **2h** window will clear; you need fewer than 5 restore lines in that window for silence.
+
+Also ensure **disk space** is healthy and avoid putting `~/.openclaw/credentials` under iCloud/Desktop sync (can corrupt JSON mid-write).
+
+### Other
+
 - **`No pages available in the connected browser`** — managed Chrome has no tab yet; use `browser navigate` first (see `workspace/TOOLS.md`). The post-restart cron warms the browser with `about:blank` after the daily 4 AM gateway restart.
 
 ## Security
