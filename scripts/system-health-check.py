@@ -6,39 +6,11 @@ Outputs ALERT lines only if something needs attention.
 Produces no output if everything is fine (silent success).
 """
 
-import json
 import os
 import shutil
 import subprocess
-import sys
-import time
 from datetime import datetime
 
-REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-# #region agent log
-_DEBUG_LOG = os.path.join(REPO, ".cursor", "debug-26e27c.log")
-_DEBUG_SESSION = "26e27c"
-
-
-def _agent_debug_log(hypothesis_id: str, message: str, data: dict) -> None:
-    """Append one NDJSON line for debug sessions (no secrets)."""
-    try:
-        os.makedirs(os.path.dirname(_DEBUG_LOG), exist_ok=True)
-        line = {
-            "sessionId": _DEBUG_SESSION,
-            "hypothesisId": hypothesis_id,
-            "location": "system-health-check.py",
-            "message": message,
-            "data": data,
-            "timestamp": int(time.time() * 1000),
-        }
-        with open(_DEBUG_LOG, "a", encoding="utf-8") as f:
-            f.write(json.dumps(line, ensure_ascii=False) + "\n")
-    except OSError:
-        pass
-
-
-# #endregion
 issues = []
 
 
@@ -131,21 +103,9 @@ def check_chrome_orphans():
 def main():
     check_gateway()
     check_disk()
-    creds_restores = check_whatsapp_creds_corruption()
+    check_whatsapp_creds_corruption()
     check_recent_errors()
     check_chrome_orphans()
-
-    # #region agent log
-    _agent_debug_log(
-        "H_summary",
-        "system-health-check complete",
-        {
-            "whatsapp_creds_restores_today": creds_restores,
-            "alert_count": len(issues),
-            "alert_kinds": [i.split("(")[0][:48] for i in issues[:5]],
-        },
-    )
-    # #endregion
 
     if issues:
         print("ALERT: System health issues detected:")
