@@ -117,7 +117,7 @@ Agent workspace files (`workspace/*.md`) take effect on the next agent turn with
 
 ## Troubleshooting
 
-- **`restored corrupted WhatsApp creds.json` repeating in `/tmp/openclaw/openclaw-*.log`** — the WhatsApp Web session file is unstable (often alongside `status 499` disconnects). Re-pair the channel: `openclaw channels add --channel whatsapp`, ensure a single gateway instance, and check disk space. `scripts/system-health-check.py` alerts only when several restores occur within the **last 2 hours** (so old log noise alone does not keep firing).
+- **`restored corrupted WhatsApp creds.json` repeating in `/tmp/openclaw/openclaw-*.log`** — the WhatsApp Web session file is unstable (often alongside `status 499` disconnects). Re-pair the channel: `openclaw channels add --channel whatsapp`, ensure a single gateway instance, and check disk space. `scripts/system-health-check.py` alerts only when several restores occur within the **last 2 hours** (so old log noise alone does not keep firing). The script exits **1** when it prints alerts, **0** when healthy.
 - **`No pages available in the connected browser`** — managed Chrome has no tab yet; use `browser navigate` first (see `workspace/TOOLS.md`). The post-restart cron warms the browser with `about:blank` after the daily 4 AM gateway restart.
 
 ## Security

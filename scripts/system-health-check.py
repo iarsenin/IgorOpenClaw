@@ -4,12 +4,15 @@
 Checks gateway status, disk space, and recent error logs.
 Outputs ALERT lines only if something needs attention.
 Produces no output if everything is fine (silent success).
+
+Exit codes: 0 = healthy, 1 = one or more alerts (for scripts/automation).
 """
 
 import json
 import os
 import shutil
 import subprocess
+import sys
 from datetime import datetime, timedelta
 
 issues = []
@@ -134,6 +137,8 @@ def main():
         print("ALERT: System health issues detected:")
         for i, issue in enumerate(issues, 1):
             print(f"  {i}. {issue}")
+        sys.exit(1)
+    sys.exit(0)
 
 
 if __name__ == "__main__":
