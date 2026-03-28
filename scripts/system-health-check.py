@@ -6,12 +6,17 @@ Outputs ALERT lines only if something needs attention.
 Produces no output if everything is fine (silent success).
 """
 
+import json
 import os
 import shutil
 import subprocess
-from datetime import datetime
+from datetime import datetime, timedelta
 
 issues = []
+
+# WhatsApp: only alert if restores are still happening recently (not stale all-day totals)
+_WHATSAPP_CREDS_RECENT_WINDOW = timedelta(hours=2)
+_WHATSAPP_CREDS_RECENT_THRESHOLD = 5
 
 
 def check_gateway():
@@ -67,25 +72,43 @@ def check_recent_errors():
 
 
 def check_whatsapp_creds_corruption():
-    """Detect repeated creds.json restore — log evidence: web-session WARN spam."""
+    """Alert only if creds restores cluster in the recent window (avoids all-day stale totals)."""
     today = datetime.now().strftime("%Y-%m-%d")
     log_path = f"/tmp/openclaw/openclaw-{today}.log"
     if not os.path.exists(log_path):
-        return 0
+        return
+    needle = "restored corrupted WhatsApp creds"
+    now = datetime.now().astimezone()
+    cutoff = now - _WHATSAPP_CREDS_RECENT_WINDOW
+    recent = 0
+    total = 0
     try:
-        needle = "restored corrupted WhatsApp creds"
         with open(log_path, "r", encoding="utf-8", errors="replace") as f:
-            n = sum(1 for line in f if needle in line)
-        if n >= 5:
-            issues.append(
-                "WhatsApp creds.json was restored from backup many times today ("
-                f"{n} occurrences in log). Session is unstable — re-pair WhatsApp "
-                "(`openclaw channels add --channel whatsapp`) and ensure only one "
-                "gateway instance is running."
-            )
-        return n
-    except (ValueError, subprocess.TimeoutExpired, FileNotFoundError):
-        return 0
+            for line in f:
+                if needle not in line:
+                    continue
+                total += 1
+                try:
+                    obj = json.loads(line)
+                    ts = obj.get("time")
+                    if not ts:
+                        continue
+                    ev = datetime.fromisoformat(ts)
+                    if ev >= cutoff:
+                        recent += 1
+                except (json.JSONDecodeError, TypeError, ValueError):
+                    continue
+    except OSError:
+        return
+
+    if recent >= _WHATSAPP_CREDS_RECENT_THRESHOLD:
+        issues.append(
+            "WhatsApp creds.json restore loop in the last "
+            f"{int(_WHATSAPP_CREDS_RECENT_WINDOW.total_seconds() // 3600)}h: "
+            f"{recent} events (also {total} total today in log). Re-pair WhatsApp "
+            "(`openclaw channels add --channel whatsapp`) and ensure only one "
+            "gateway instance is running."
+        )
 
 
 def check_chrome_orphans():
