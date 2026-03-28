@@ -93,7 +93,7 @@
       "wakeMode": "now",
       "payload": {
         "kind": "agentTurn",
-        "message": "Run: `python3 \"$OPENCLAW_REPO/scripts/vapi-call.py\" inbound-check`\n\nIf the script produced output, send it to Igor via WhatsApp.\nIf the script produced NO output (empty), STOP immediately. Do not send any message.\n\nQuiet hours 11 PM–7 AM: defer non-urgent alerts to morning briefing.",
+        "message": "Run: `python3 \"$OPENCLAW_REPO/scripts/vapi-call.py\" inbound-check`\n\nIf the script produced output, send exactly that output as one message.\nIf the script produced NO output (empty), STOP immediately. Do not send any message.\n\nQuiet hours 11 PM–7 AM: defer non-urgent alerts to morning briefing.",
         "timeoutSeconds": 120
       }
     },
@@ -125,7 +125,7 @@
       "wakeMode": "now",
       "payload": {
         "kind": "agentTurn",
-        "message": "Run: `python3 \"$OPENCLAW_REPO/scripts/system-health-check.py\"`\n\nIf the script produced output, send it to Igor via WhatsApp.\nIf the script produced NO output (empty), STOP immediately. Do not send any message.\n\nIf output mentions browser issues, run `browser close` once before sending.",
+        "message": "Run: `python3 \"$OPENCLAW_REPO/scripts/system-health-check.py\"`\n\nIf the script produced output, send exactly that output as one message.\nIf the script produced NO output (empty), STOP immediately. Do not send any message.\n\nIf output mentions browser issues, run `browser close` once before sending.",
         "timeoutSeconds": 180
       }
     }

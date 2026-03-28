@@ -198,6 +198,7 @@ Igor does **not** want to see status messages about normal, successful internal 
 - Routine system-health checks that find nothing wrong
 - "No new inbound calls", "No new emails", or any absence-of-activity messages
 - SSL handshakes, API auth renewals, or other plumbing that worked
+- Message transport confirmations (e.g., "Sent to Igor via WhatsApp.") when the message already appears in the same chat
 
 **DO report** (something is broken or needs attention):
 - Gateway service not loaded / not installed / config issues
@@ -220,3 +221,4 @@ Cron jobs run in **isolated sessions**. Follow these rules:
 2. **SILENT by default:** Unless the cron message says "always send," your default is to send **zero messages**. Only send if you found something actionable.
 3. **One message max:** In a cron session, send at most ONE WhatsApp message, then STOP.
 4. **No status confirmations:** Never send "all clear", "nothing to report", "checked, no issues", "no action", or similar. Igor only wants to hear from you when action is needed.
+5. **No channel-meta chatter:** Do not add transport/meta lines like "sent via WhatsApp" or "delivered to Igor." Send the actual content only.
