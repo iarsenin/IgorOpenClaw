@@ -13,7 +13,7 @@
       "wakeMode": "now",
       "payload": {
         "kind": "agentTurn",
-        "message": "Gateway just restarted. Read MEMORY.md Active Tasks. Resume active ones, skip paused. Respect quiet hours (before 7 AM, queue for morning briefing). Run `browser close` once — ignore errors if no browser is running.",
+        "message": "Gateway just restarted. Read MEMORY.md Active Tasks. Resume active ones, skip paused. Respect quiet hours (before 7 AM, queue for morning briefing). Warm the browser tool once: `browser navigate` to `about:blank` (creates a tab if none), then `browser close` — avoids later cron jobs hitting \"No pages available\" on a cold browser.",
         "timeoutSeconds": 300
       }
     },

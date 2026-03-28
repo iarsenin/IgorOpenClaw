@@ -135,6 +135,8 @@ memory of prior conversations — pick up this task and continue without asking 
 a single question? If not, the context is incomplete. Include: names, numbers, URLs,
 what was tried, what worked, what failed, what's pending, and what Igor decided.
 
+**Editing MEMORY.md:** Before `search_replace`, `read_file` the current text in the same turn and copy `old_string` exactly (smart quotes vs ASCII quotes and newlines must match). If replace fails, re-read and retry once; prefer editing a single bullet line rather than a long paragraph.
+
 *Optional fields (sibling bullets):* **`sms-watch`**, **`last-sms-baseline`**, **`last-sms-scan`** — see § SMS reply monitoring.
 *Optional for listing-watch tasks:* **`last-chrono-check`**, **`last-chrono-baseline`** — updated by **`chrono24-listing-monitor`** cron.
 

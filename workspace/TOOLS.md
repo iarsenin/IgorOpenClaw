@@ -89,6 +89,8 @@ ALWAYS draft first, show user, send only after approval.
 
 **Always `browser close` when done.** Use `ref` from `browser snapshot`, NOT CSS selectors.
 
+**Cold start:** If you see `No pages available in the connected browser`, the managed Chrome has no tab yet. Run `browser navigate` to your target URL (or `about:blank` first) before `browser snapshot` — never snapshot first on a fresh session.
+
 1. `browser navigate` to page
 2. `browser snapshot` to get refs (e.g. `e123`)
 3. `browser act` with `ref: "e123"` + `action` (both required)

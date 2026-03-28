@@ -6,13 +6,39 @@ Outputs ALERT lines only if something needs attention.
 Produces no output if everything is fine (silent success).
 """
 
+import json
 import os
 import shutil
 import subprocess
 import sys
+import time
 from datetime import datetime
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+# #region agent log
+_DEBUG_LOG = os.path.join(REPO, ".cursor", "debug-26e27c.log")
+_DEBUG_SESSION = "26e27c"
+
+
+def _agent_debug_log(hypothesis_id: str, message: str, data: dict) -> None:
+    """Append one NDJSON line for debug sessions (no secrets)."""
+    try:
+        os.makedirs(os.path.dirname(_DEBUG_LOG), exist_ok=True)
+        line = {
+            "sessionId": _DEBUG_SESSION,
+            "hypothesisId": hypothesis_id,
+            "location": "system-health-check.py",
+            "message": message,
+            "data": data,
+            "timestamp": int(time.time() * 1000),
+        }
+        with open(_DEBUG_LOG, "a", encoding="utf-8") as f:
+            f.write(json.dumps(line, ensure_ascii=False) + "\n")
+    except OSError:
+        pass
+
+
+# #endregion
 issues = []
 
 
@@ -59,11 +85,35 @@ def check_recent_errors():
             and "DeprecationWarning" not in l
             and "gateway closed" not in l
             and "No pages available" not in l
+            and "status 499" not in l
+            and "WhatsApp Web connection closed" not in l
         ]
         if len(real_errors) > 10:
             issues.append(f"High error count in today's log: {len(real_errors)} non-transient ERROR entries")
     except Exception:
         pass
+
+
+def check_whatsapp_creds_corruption():
+    """Detect repeated creds.json restore — log evidence: web-session WARN spam."""
+    today = datetime.now().strftime("%Y-%m-%d")
+    log_path = f"/tmp/openclaw/openclaw-{today}.log"
+    if not os.path.exists(log_path):
+        return 0
+    try:
+        needle = "restored corrupted WhatsApp creds"
+        with open(log_path, "r", encoding="utf-8", errors="replace") as f:
+            n = sum(1 for line in f if needle in line)
+        if n >= 5:
+            issues.append(
+                "WhatsApp creds.json was restored from backup many times today ("
+                f"{n} occurrences in log). Session is unstable — re-pair WhatsApp "
+                "(`openclaw channels add --channel whatsapp`) and ensure only one "
+                "gateway instance is running."
+            )
+        return n
+    except (ValueError, subprocess.TimeoutExpired, FileNotFoundError):
+        return 0
 
 
 def check_chrome_orphans():
@@ -81,8 +131,21 @@ def check_chrome_orphans():
 def main():
     check_gateway()
     check_disk()
+    creds_restores = check_whatsapp_creds_corruption()
     check_recent_errors()
     check_chrome_orphans()
+
+    # #region agent log
+    _agent_debug_log(
+        "H_summary",
+        "system-health-check complete",
+        {
+            "whatsapp_creds_restores_today": creds_restores,
+            "alert_count": len(issues),
+            "alert_kinds": [i.split("(")[0][:48] for i in issues[:5]],
+        },
+    )
+    # #endregion
 
     if issues:
         print("ALERT: System health issues detected:")
