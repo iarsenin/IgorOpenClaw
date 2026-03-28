@@ -252,27 +252,60 @@ def _save_seen(seen):
 
 def _add_pending(call_id, to_number):
     """Track an outbound call that needs follow-up."""
+    entry = {
+        "call_id": call_id,
+        "to_number": to_number,
+        "failures": 0,
+        "last_error": "",
+    }
     with open(PENDING_FILE, "a") as f:
-        f.write(f"{call_id} {to_number}\n")
+        f.write(json.dumps(entry) + "\n")
 
 
 def _load_pending():
-    """Return list of (call_id, to_number) still pending."""
+    """Return pending outbound call entries (supports legacy line format)."""
     if not os.path.exists(PENDING_FILE):
         return []
     entries = []
     with open(PENDING_FILE) as f:
         for line in f:
-            parts = line.strip().split(None, 1)
-            if parts:
-                entries.append((parts[0], parts[1] if len(parts) > 1 else "?"))
+            raw = line.strip()
+            if not raw:
+                continue
+            if raw.startswith("{"):
+                try:
+                    item = json.loads(raw)
+                    entries.append({
+                        "call_id": item.get("call_id", ""),
+                        "to_number": item.get("to_number", "?"),
+                        "failures": int(item.get("failures", 0) or 0),
+                        "last_error": str(item.get("last_error", "") or ""),
+                    })
+                    continue
+                except Exception:
+                    pass
+            # Legacy compatibility: "<call_id> <to_number>"
+            parts = raw.split(None, 1)
+            if not parts:
+                continue
+            entries.append({
+                "call_id": parts[0],
+                "to_number": parts[1] if len(parts) > 1 else "?",
+                "failures": 0,
+                "last_error": "",
+            })
     return entries
 
 
 def _save_pending(entries):
     with open(PENDING_FILE, "w") as f:
-        for cid, num in entries:
-            f.write(f"{cid} {num}\n")
+        for e in entries:
+            f.write(json.dumps({
+                "call_id": e.get("call_id", ""),
+                "to_number": e.get("to_number", "?"),
+                "failures": int(e.get("failures", 0) or 0),
+                "last_error": str(e.get("last_error", "") or "")[:160],
+            }) + "\n")
 
 
 def cmd_inbound_check():
@@ -334,16 +367,40 @@ def cmd_inbound_check():
     pending = _load_pending()
     still_pending = []
 
-    for cid, to_num in pending:
+    for p in pending:
+        cid = p.get("call_id", "")
+        to_num = p.get("to_number", "?")
+        failures = int(p.get("failures", 0) or 0)
         try:
             call_data = api_request("GET", f"/call/{cid}")
-        except Exception:
-            still_pending.append((cid, to_num))
+        except VapiError as e:
+            failures += 1
+            last_error = str(e)
+            still_pending.append({
+                "call_id": cid,
+                "to_number": to_num,
+                "failures": failures,
+                "last_error": last_error,
+            })
+            if failures >= 3:
+                has_output = True
+                print("ALERT: PENDING OUTBOUND CALL CHECK FAILING")
+                print(f"  Call ID: {cid}")
+                print(f"  To: {to_num}")
+                print(f"  Consecutive status-check failures: {failures}")
+                print(f"  Last error: {last_error[:180]}")
+                print("  Action: check Vapi/API connectivity; call will remain pending.")
+                print()
             continue
 
         status = call_data.get("status", "unknown")
         if status not in ("ended",):
-            still_pending.append((cid, to_num))
+            still_pending.append({
+                "call_id": cid,
+                "to_number": to_num,
+                "failures": 0,
+                "last_error": "",
+            })
             continue
 
         has_output = True

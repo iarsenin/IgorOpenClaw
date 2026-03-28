@@ -133,6 +133,7 @@ Also ensure **disk space** is healthy and avoid putting `~/.openclaw/credentials
 ### Other
 
 - **`No pages available in the connected browser`** — managed Chrome has no tab yet; use `browser navigate` first (see `workspace/TOOLS.md`). The post-restart cron warms the browser with `about:blank` after the daily 4 AM gateway restart.
+- **Cron updates not taking effect** — verify `~/.openclaw/cron/jobs.json` is a symlink to repo `config/cron/jobs.json`. `scripts/system-health-check.py` now warns if live cron is not symlinked.
 
 ## Security
 

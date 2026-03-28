@@ -21,6 +21,10 @@ from datetime import datetime, timedelta, timezone
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 ENV_PATH = os.path.join(REPO, ".env")
+REQUIRED_ENV_KEYS = [
+    "OPENAI_ADMIN_KEY",
+    "VAPI_API_KEY",
+]
 
 
 # ── Credentials ──────────────────────────────────────────────────────────────
@@ -34,9 +38,10 @@ def load_env():
                 if line and not line.startswith("#") and "=" in line:
                     k, v = line.split("=", 1)
                     env[k.strip()] = v.strip()
-    # env vars override file
-    for k in list(env.keys()):
-        env[k] = os.environ.get(k, env[k])
+    # Environment variables always override file values; also allow env-only keys.
+    for k in REQUIRED_ENV_KEYS:
+        if os.environ.get(k):
+            env[k] = os.environ[k]
     return env
 
 

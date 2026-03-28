@@ -37,7 +37,7 @@ def _open_all_dbs():
 
 
 def _query_contacts(dbs, where_clause, params):
-    """Query contacts across all databases, deduplicate by full number."""
+    """Query contacts across all databases, dedupe by phone/email identity."""
     results = {}
     for db in dbs:
         try:
@@ -79,11 +79,9 @@ def _query_contacts(dbs, where_clause, params):
                         contact["emails"].append(
                             (e["ZADDRESS"], _label(e["ZLABEL"]))
                         )
-                name_key = f"{contact['first']} {contact['last']}".strip()
-                if name_key not in results or len(contact["phones"]) > len(
-                    results[name_key]["phones"]
-                ):
-                    results[name_key] = contact
+                key = _contact_identity(contact)
+                if key not in results or _contact_score(contact) > _contact_score(results[key]):
+                    results[key] = contact
         except Exception:
             pass
     return list(results.values())
@@ -100,6 +98,31 @@ def _label(raw):
 def _normalize_phone(number):
     """Strip a phone number to digits only for comparison."""
     return re.sub(r"[^\d+]", "", number)
+
+
+def _contact_identity(contact):
+    """Stable dedupe identity: phone/email first, then (name, org) fallback."""
+    phones = tuple(sorted(
+        p for p in {_normalize_phone(n) for n, _ in contact.get("phones", [])} if p
+    ))
+    emails = tuple(sorted(
+        e for e in {a.lower() for a, _ in contact.get("emails", [])} if e
+    ))
+    if phones or emails:
+        return ("pe", phones, emails)
+    name = f"{contact.get('first', '')} {contact.get('last', '')}".strip().lower()
+    org = (contact.get("org", "") or "").strip().lower()
+    return ("nameorg", name, org)
+
+
+def _contact_score(contact):
+    """Prefer richer entries when dedupe keys collide."""
+    return (
+        len(contact.get("phones", [])) * 10
+        + len(contact.get("emails", [])) * 5
+        + (1 if contact.get("org") else 0)
+        + (1 if contact.get("title") else 0)
+    )
 
 
 def cmd_search(query):
@@ -123,15 +146,14 @@ def cmd_search(query):
         # Also search by phone digits (can't do in SQL due to Unicode hyphens)
         if digits and len(digits) >= 4:
             phone_contacts = _query_contacts(dbs, "1=1", ())
+            existing_keys = {_contact_identity(c) for c in contacts}
             for c in phone_contacts:
                 for phone, _ in c["phones"]:
                     if digits in _normalize_phone(phone):
-                        name_key = f"{c['first']} {c['last']}".strip()
-                        if not any(
-                            f"{x['first']} {x['last']}".strip() == name_key
-                            for x in contacts
-                        ):
+                        key = _contact_identity(c)
+                        if key not in existing_keys:
                             contacts.append(c)
+                            existing_keys.add(key)
                         break
         if not contacts:
             print(f"No contacts matching: {query}")

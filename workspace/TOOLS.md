@@ -61,6 +61,7 @@ python3 "$OPENCLAW_REPO/scripts/email-search.py" search --from acme --account ya
 
 Flags: `--from`, `--to`, `--subject`, `--body`, `--after YYYY-MM-DD`, `--before YYYY-MM-DD`
 Folder: `--folder inbox` (default), `sent`, `all`, `drafts`, `trash`
+  - Yahoo `all` searches Inbox+Sent+Draft+Trash and prints IDs as `<Folder>:<ID>`; pass that same ID to `read --account yahoo --id ...`
 Account: `--account both` (default), `gmail`, `yahoo`
 
 ### Read a specific email

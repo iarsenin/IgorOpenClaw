@@ -41,7 +41,7 @@ GMAIL_FOLDERS = {
 YAHOO_FOLDERS = {
     "inbox": "Inbox",
     "sent": "Sent",
-    "all": "Inbox",
+    "all": "ALL_FOLDERS",
     "drafts": "Draft",
     "trash": "Trash",
 }
@@ -88,6 +88,14 @@ def _imap_date(iso_date):
     return dt.strftime("%d-%b-%Y")
 
 
+def _yahoo_folder_list(alias):
+    """Resolve Yahoo folder alias; `all` means search multiple folders."""
+    key = (alias or "inbox").lower()
+    if key == "all":
+        return ["Inbox", "Sent", "Draft", "Trash"]
+    return [YAHOO_FOLDERS.get(key, alias)]
+
+
 def _build_imap_search(args):
     """Build IMAP SEARCH criteria from parsed args."""
     criteria = []
@@ -112,7 +120,7 @@ def _yahoo_search(args):
     if not user or not pw:
         return None, "yahoo: YAHOO_USER or YAHOO_APP_PASSWORD not set"
 
-    folder = YAHOO_FOLDERS.get((args.folder or "inbox").lower(), args.folder)
+    folders = _yahoo_folder_list(args.folder)
     page_size = args.page_size or 20
 
     try:
@@ -127,48 +135,50 @@ def _yahoo_search(args):
         return None, f"yahoo: connection error — {str(e)[:200]}"
 
     try:
-        ok, _ = conn.select(f'"{folder}"' if " " in folder else folder, readonly=True)
-        if ok != "OK":
-            conn.logout()
-            return None, f"yahoo: cannot open folder '{folder}'"
-
-        search_criteria = _build_imap_search(args)
-        ok, data = conn.search(None, search_criteria)
-        if ok != "OK":
-            conn.logout()
-            return None, f"yahoo: search failed"
-
-        msg_ids = data[0].split()
-        if not msg_ids:
-            conn.logout()
-            return None, None  # no results, not an error
-
-        msg_ids = msg_ids[-page_size:]
-        msg_ids.reverse()
-
         rows = []
-        for mid in msg_ids:
-            ok, msg_data = conn.fetch(mid, "(FLAGS BODY.PEEK[HEADER.FIELDS (FROM SUBJECT DATE)])")
+        search_criteria = _build_imap_search(args)
+
+        for folder in folders:
+            ok, _ = conn.select(f'"{folder}"' if " " in folder else folder, readonly=True)
             if ok != "OK":
                 continue
-            raw_headers = msg_data[0][1] if msg_data and msg_data[0] else b""
-            flags_raw = msg_data[0][0] if msg_data and msg_data[0] else b""
 
-            parsed = email.message_from_bytes(raw_headers)
-            subj = _decode_header(parsed.get("Subject", ""))[:100]
-            from_raw = _decode_header(parsed.get("From", ""))
-            from_name = email.utils.parseaddr(from_raw)[0] or from_raw.split("<")[0].strip() or from_raw
-            date_str = parsed.get("Date", "")
+            ok, data = conn.search(None, search_criteria)
+            if ok != "OK":
+                continue
 
-            flag_str = ""
-            if isinstance(flags_raw, bytes):
-                flags_text = flags_raw.decode("utf-8", errors="replace")
-                if "\\Seen" not in flags_text:
-                    flag_str += " *"
-                if "\\Answered" in flags_text:
-                    flag_str += " R"
+            msg_ids = data[0].split()
+            if not msg_ids:
+                continue
 
-            rows.append((mid.decode(), flag_str.strip(), subj, from_name[:25], date_str[:24]))
+            msg_ids = msg_ids[-page_size:]
+            msg_ids.reverse()
+
+            for mid in msg_ids:
+                ok, msg_data = conn.fetch(mid, "(FLAGS BODY.PEEK[HEADER.FIELDS (FROM SUBJECT DATE)])")
+                if ok != "OK":
+                    continue
+                raw_headers = msg_data[0][1] if msg_data and msg_data[0] else b""
+                flags_raw = msg_data[0][0] if msg_data and msg_data[0] else b""
+
+                parsed = email.message_from_bytes(raw_headers)
+                subj = _decode_header(parsed.get("Subject", ""))[:100]
+                from_raw = _decode_header(parsed.get("From", ""))
+                from_name = email.utils.parseaddr(from_raw)[0] or from_raw.split("<")[0].strip() or from_raw
+                date_str = parsed.get("Date", "")
+
+                flag_str = ""
+                if isinstance(flags_raw, bytes):
+                    flags_text = flags_raw.decode("utf-8", errors="replace")
+                    if "\\Seen" not in flags_text:
+                        flag_str += " *"
+                    if "\\Answered" in flags_text:
+                        flag_str += " R"
+
+                msg_id = mid.decode()
+                if len(folders) > 1:
+                    msg_id = f"{folder}:{msg_id}"
+                rows.append((msg_id, flag_str.strip(), subj, from_name[:25], date_str[:24]))
 
         conn.logout()
 
@@ -212,6 +222,12 @@ def _yahoo_read(msg_id, folder=None):
     except Exception as e:
         print(f"Error: {e}", file=sys.stderr)
         sys.exit(1)
+
+    if ":" in msg_id and not folder:
+        prefix, _, raw_id = msg_id.partition(":")
+        if prefix in {"Inbox", "Sent", "Draft", "Trash"} and raw_id.isdigit():
+            folder = prefix
+            msg_id = raw_id
 
     primary_folder = YAHOO_FOLDERS.get((folder or "inbox").lower(), folder or "Inbox")
     fallback_folders = [f for f in ["Inbox", "Sent", "Draft"] if f != primary_folder]
@@ -322,6 +338,8 @@ def folder_label(account, alias):
     alias = (alias or "inbox").lower()
     if account == "gmail":
         return GMAIL_FOLDERS.get(alias, alias)
+    if alias == "all":
+        return "Inbox+Sent+Draft+Trash"
     return YAHOO_FOLDERS.get(alias, alias)
 
 

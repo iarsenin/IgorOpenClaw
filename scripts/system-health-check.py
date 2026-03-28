@@ -20,6 +20,10 @@ issues = []
 # WhatsApp: only alert if restores are still happening recently (not stale all-day totals)
 _WHATSAPP_CREDS_RECENT_WINDOW = timedelta(hours=2)
 _WHATSAPP_CREDS_RECENT_THRESHOLD = 5
+_WHATSAPP_499_RECENT_WINDOW = timedelta(hours=2)
+_WHATSAPP_499_RECENT_THRESHOLD = 12
+_BROWSER_NO_PAGES_WINDOW = timedelta(hours=3)
+_BROWSER_NO_PAGES_THRESHOLD = 3
 
 
 def check_gateway():
@@ -74,15 +78,10 @@ def check_recent_errors():
         pass
 
 
-def check_whatsapp_creds_corruption():
-    """Alert only if creds restores cluster in the recent window (avoids all-day stale totals)."""
-    today = datetime.now().strftime("%Y-%m-%d")
-    log_path = f"/tmp/openclaw/openclaw-{today}.log"
-    if not os.path.exists(log_path):
-        return
-    needle = "restored corrupted WhatsApp creds"
+def _count_recent_log_events(log_path, needle, window):
+    """Count occurrences of `needle` in log JSON lines within rolling window."""
     now = datetime.now().astimezone()
-    cutoff = now - _WHATSAPP_CREDS_RECENT_WINDOW
+    cutoff = now - window
     recent = 0
     total = 0
     try:
@@ -102,7 +101,18 @@ def check_whatsapp_creds_corruption():
                 except (json.JSONDecodeError, TypeError, ValueError):
                     continue
     except OSError:
+        return 0, 0
+    return recent, total
+
+
+def check_whatsapp_creds_corruption():
+    """Alert only if creds restores cluster in the recent window (avoids all-day stale totals)."""
+    today = datetime.now().strftime("%Y-%m-%d")
+    log_path = f"/tmp/openclaw/openclaw-{today}.log"
+    if not os.path.exists(log_path):
         return
+    needle = "restored corrupted WhatsApp creds"
+    recent, total = _count_recent_log_events(log_path, needle, _WHATSAPP_CREDS_RECENT_WINDOW)
 
     if recent >= _WHATSAPP_CREDS_RECENT_THRESHOLD:
         issues.append(
@@ -112,6 +122,53 @@ def check_whatsapp_creds_corruption():
             "(`openclaw channels add --channel whatsapp`) and ensure only one "
             "gateway instance is running."
         )
+
+
+def check_whatsapp_disconnect_storm():
+    today = datetime.now().strftime("%Y-%m-%d")
+    log_path = f"/tmp/openclaw/openclaw-{today}.log"
+    if not os.path.exists(log_path):
+        return
+    needle = "WhatsApp Web connection closed (status 499)"
+    recent, total = _count_recent_log_events(log_path, needle, _WHATSAPP_499_RECENT_WINDOW)
+    if recent >= _WHATSAPP_499_RECENT_THRESHOLD:
+        issues.append(
+            "WhatsApp disconnect storm in the last "
+            f"{int(_WHATSAPP_499_RECENT_WINDOW.total_seconds() // 3600)}h: "
+            f"{recent} status-499 events ({total} total today)."
+        )
+
+
+def check_browser_no_pages_loop():
+    today = datetime.now().strftime("%Y-%m-%d")
+    log_path = f"/tmp/openclaw/openclaw-{today}.log"
+    if not os.path.exists(log_path):
+        return
+    needle = "No pages available in the connected browser"
+    recent, total = _count_recent_log_events(log_path, needle, _BROWSER_NO_PAGES_WINDOW)
+    if recent >= _BROWSER_NO_PAGES_THRESHOLD:
+        issues.append(
+            "Browser 'No pages available' repeated in the last "
+            f"{int(_BROWSER_NO_PAGES_WINDOW.total_seconds() // 3600)}h: "
+            f"{recent} events ({total} total today)."
+        )
+
+
+def check_cron_jobs_binding():
+    """Warn if live cron jobs file is not symlinked to repo config."""
+    expected = os.path.realpath(
+        os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "config", "cron", "jobs.json")
+    )
+    live = os.path.expanduser("~/.openclaw/cron/jobs.json")
+    if not os.path.exists(live):
+        issues.append("Live cron config missing: ~/.openclaw/cron/jobs.json")
+        return
+    if not os.path.islink(live):
+        issues.append("Live cron config is not a symlink; repo schedule updates may not apply.")
+        return
+    target = os.path.realpath(live)
+    if target != expected:
+        issues.append("Live cron config points to a different file than repo config/cron/jobs.json.")
 
 
 def check_chrome_orphans():
@@ -130,6 +187,9 @@ def main():
     check_gateway()
     check_disk()
     check_whatsapp_creds_corruption()
+    check_whatsapp_disconnect_storm()
+    check_browser_no_pages_loop()
+    check_cron_jobs_binding()
     check_recent_errors()
     check_chrome_orphans()
 

@@ -142,6 +142,11 @@ sleep 2
 launchctl load "$PLIST"
 sleep 3
 
+# --- Re-assert symlinks in case gateway install/restart recreated concrete files ---
+ln -sfn "$REPO_DIR/workspace" "$WORKSPACE_DIR"
+ln -sfn "$REPO_DIR/config/cron/jobs.json" "$CRON_DIR/jobs.json"
+echo "Verified symlinks: workspace and cron/jobs.json"
+
 echo ""
 echo "=== Setup Complete ==="
 echo ""
