@@ -3,6 +3,9 @@
 <!--
   This template is tracked in git.
   The live file `workspace/MEMORY.md` is local-only and git-ignored.
+  Max size: 6,000 characters. Current state only — no history narratives.
+  Detailed chronological context lives in memory/task-history.md (read on demand).
+  See AGENTS.md § Two-tier memory for rules.
 -->
 
 ## Active Tasks

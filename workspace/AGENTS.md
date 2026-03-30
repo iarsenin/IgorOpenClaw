@@ -130,25 +130,40 @@ Do NOT persist: one-shot questions, quick lookups, or tasks you complete right a
 | status      | `active` or `paused`                               |
 | context     | Everything needed to resume without asking the user |
 
-**Context must be self-sufficient.** Test: could a fresh agent session — with zero
-memory of prior conversations — pick up this task and continue without asking Igor
-a single question? If not, the context is incomplete. Include: names, numbers, URLs,
-what was tried, what worked, what failed, what's pending, and what Igor decided.
+**Context = current state, not history.** Include: names, numbers, URLs, current status, what's pending, what Igor decided, and what's needed to continue. Do NOT include chronological play-by-play — that goes in the history log (see below).
 
 **Editing MEMORY.md:** Before `search_replace`, `read_file` the current text in the same turn and copy `old_string` exactly (smart quotes vs ASCII quotes and newlines must match). If replace fails, re-read and retry once; prefer editing a single bullet line rather than a long paragraph.
 
 *Optional fields (sibling bullets):* **`sms-watch`**, **`last-sms-baseline`**, **`last-sms-scan`** — see § SMS reply monitoring.
 *Optional for listing-watch tasks:* **`last-chrono-check`**, **`last-chrono-baseline`** — updated by **`chrono24-listing-monitor`** cron.
 
-### Size discipline (MEMORY.md ≤ 10,000 characters)
+### Two-tier memory: MEMORY.md + memory/task-history.md
+
+| File | Purpose | Loaded when | Max size |
+|------|---------|-------------|----------|
+| `MEMORY.md` | Current state — what's active, what's next | Every turn (auto) | 6,000 chars |
+| `memory/task-history.md` | Chronological detail log | On demand only | Unlimited |
+
+**MEMORY.md** is loaded into context every turn. Keep it lean: current state, actionable info, pointers. No narrative history.
+
+**memory/task-history.md** stores dated event logs per task. Format: `## Task Title` section headers, then `- YYYY-MM-DD | one-line event`. Newest entries first.
+
+**Rules:**
+1. When a task event happens (price change, call made, reply received), append a one-liner to the task's section in `memory/task-history.md`.
+2. In MEMORY.md, update only the **current state** fields (status, last-check, baseline, etc.).
+3. If you need historical context for a task, `read_file` only the relevant `##` section from `memory/task-history.md` — never load the whole file.
+4. To find a section: grep for the task name, note the line number, then `read_file` with offset/limit.
+5. MEMORY.md context entries should end with a pointer: `For details → memory/task-history.md § <section name>`.
+
+### Size discipline (MEMORY.md ≤ 6,000 characters)
 
 MEMORY.md is loaded into the context window every turn. Bloat = wasted tokens + degraded reasoning.
 
-1. **Compress on day 3** — When a task has been active 3+ days, rewrite its context: drop resolved dead ends, collapse chronological history into a bullet-point summary, keep only what's needed to continue. The self-sufficiency test still applies.
-2. **Prune before writing** — Before adding new content, check size. If MEMORY.md exceeds ~8,000 characters:
-   - Compress the longest active task context first
+1. **Current state only** — No history in MEMORY.md. If context is becoming a chronological narrative, move the history to `memory/task-history.md` and replace with a summary + pointer.
+2. **Prune before writing** — Before adding content, check size. If MEMORY.md exceeds ~5,000 characters:
+   - Move the longest task's history to `memory/task-history.md`
    - Trim Completed Tasks to the 10 most recent
-   - Drop empty placeholder sections (e.g. "No entries yet")
+   - Drop empty placeholder sections
 3. **Completed Tasks are one-liners** — Format: `YYYY-MM-DD | title | outcome`. No context blocks, no monitoring fields.
 4. **Preferences / Corrections stay short** — One line each. If the list grows past 10 entries, consolidate related items.
 
