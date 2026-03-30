@@ -8,7 +8,7 @@ This repository is the single source of truth for an OpenClaw agent that:
 
 - Runs 24/7 as a macOS LaunchAgent daemon
 - Accepts instructions via WhatsApp and executes tasks autonomously
-- Uses **Google Gemini** (primary) and **OpenAI** (fallback) as LLM providers
+- Uses **OpenAI** (primary) and **Google Gemini** (fallback) as LLM providers
 - Automates browser interactions, email, iMessage/SMS, phone calls (Vapi AI), file management, and coding workflows
 - Integrates with Cursor IDE for autonomous coding and research
 
@@ -38,7 +38,7 @@ The agent acts on its owner's behalf — browsing the web, managing email, runni
 
 - **Mac Mini M2** (8 GB RAM, Apple Silicon) — runs the agent natively
 - **OpenClaw Gateway** — always-on daemon managed by launchd
-- **LLMs via API** — no local models (hardware too constrained); Gemini as primary, OpenAI as fallback
+- **LLMs via API** — no local models (hardware too constrained); OpenAI as primary, Gemini as fallback
 - **Vapi AI** — outbound and inbound phone calls via AI voice agent "Riley" (+19179628631)
 - **Skills (17 ready)** — browser automation, Gmail/Calendar/Drive (gog OAuth),
   email triage (himalaya IMAP), Apple Reminders, GitHub, coding-agent, and more
@@ -107,8 +107,8 @@ For the full step-by-step walkthrough, see [SETUP_GUIDE.md](SETUP_GUIDE.md).
 Configuration lives in `config/openclaw.json.template`. The auth token uses a `__OPENCLAW_AUTH_TOKEN__` placeholder — `scripts/setup.sh` copies the template to `~/.openclaw/openclaw.json` and injects the real token from `.env`.
 
 Current repo default models:
-- Primary: `google/gemini-2.5-pro`
-- Fallback: `openai/gpt-5.4-mini`
+- Primary: `openai/gpt-5.4-mini`
+- Fallback: `google/gemini-2.5-pro`
 
 `setup.sh` also injects all API keys and environment variables from `.env` into the LaunchAgent plist so they are available to the gateway process and cron scripts. This is critical — running `openclaw doctor --fix` will reinstall the plist and wipe these injected variables. Always re-run `bash scripts/setup.sh` after `doctor --fix`.
 
