@@ -187,6 +187,29 @@ openclaw gateway restart
 openclaw gateway status
 ```
 
+### Clawd not responding (LiveSessionModelSwitchError)
+
+Symptom examples:
+- `Gateway agent failed; falling back to embedded: ... LiveSessionModelSwitchError`
+- cron jobs erroring after model changes with mixed provider/model traces
+
+This usually means a stale live session is pinned to an old model while defaults changed.
+
+Fast recovery:
+
+```bash
+# Apply model object atomically (avoid partial primary/fallback updates)
+openclaw config set agents.defaults.model '{"primary":"openai/gpt-5.4-mini","fallbacks":["google/gemini-2.5-pro"]}' --strict-json
+
+# Restart and verify
+openclaw gateway restart
+openclaw gateway status
+openclaw agent --agent main --message "Reply with OK only." --json
+```
+
+If OpenAI quota/rate-limit blocks responsiveness, temporarily invert routing:
+`primary: google/gemini-2.5-pro`, fallback `openai/gpt-5.4-mini`, then revert when quota is healthy.
+
 ## Security
 
 - Gateway binds to `127.0.0.1` only (never exposed to the network)
