@@ -9,6 +9,7 @@ REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 OPENCLAW_DIR="$HOME/.openclaw"
 WORKSPACE_DIR="$OPENCLAW_DIR/workspace"
 CRON_DIR="$OPENCLAW_DIR/cron"
+PLIST="$HOME/Library/LaunchAgents/ai.openclaw.gateway.plist"
 
 echo "=== IgorOpenClaw Setup ==="
 echo "Repo: $REPO_DIR"
@@ -49,6 +50,19 @@ if [ -f "$REPO_DIR/.env" ]; then
     source "$REPO_DIR/.env"
     set +a
     echo "Loaded environment variables from .env"
+fi
+
+# --- Recover critical env vars from existing LaunchAgent when .env is incomplete ---
+if [ -f "$PLIST" ]; then
+    for VAR in OPENAI_ADMIN_KEY VAPI_API_KEY GOG_KEYRING_PASSWORD VAPI_ASSISTANT_ID VAPI_PHONE_NUMBER_ID VAPI_PHONE_NUMBER; do
+        if [ -z "${!VAR:-}" ]; then
+            EXISTING=$(/usr/libexec/PlistBuddy -c "Print :EnvironmentVariables:$VAR" "$PLIST" 2>/dev/null || true)
+            if [ -n "$EXISTING" ]; then
+                export "$VAR=$EXISTING"
+                echo "Recovered $VAR from existing LaunchAgent plist"
+            fi
+        fi
+    done
 fi
 
 # --- Create directories ---
@@ -129,7 +143,6 @@ if [ -f "$OPENCLAW_DIR/openclaw.json" ]; then
 fi
 
 # --- Inject API keys into LaunchAgent plist (BEFORE starting gateway) ---
-PLIST="$HOME/Library/LaunchAgents/ai.openclaw.gateway.plist"
 if [ -f "$PLIST" ] && [ -f "$REPO_DIR/.env" ]; then
     echo "Injecting API keys into LaunchAgent plist..."
     /usr/libexec/PlistBuddy -c "Delete :EnvironmentVariables:OPENCLAW_REPO" "$PLIST" 2>/dev/null || true
@@ -141,6 +154,18 @@ if [ -f "$PLIST" ] && [ -f "$REPO_DIR/.env" ]; then
             /usr/libexec/PlistBuddy -c "Add :EnvironmentVariables:$VAR string $VAL" "$PLIST"
         fi
     done
+fi
+
+# --- Preflight warnings for commonly-missed runtime keys ---
+MISSING_CRITICAL=()
+for VAR in OPENAI_ADMIN_KEY VAPI_API_KEY GOG_KEYRING_PASSWORD; do
+    if ! /usr/libexec/PlistBuddy -c "Print :EnvironmentVariables:$VAR" "$PLIST" >/dev/null 2>&1; then
+        MISSING_CRITICAL+=("$VAR")
+    fi
+done
+if [ "${#MISSING_CRITICAL[@]}" -gt 0 ]; then
+    echo "WARNING: Missing critical runtime env vars in LaunchAgent: ${MISSING_CRITICAL[*]}"
+    echo "         Add them to .env and re-run: bash scripts/setup.sh"
 fi
 
 # --- (Re)start gateway with env vars already in plist ---

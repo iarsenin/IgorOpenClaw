@@ -155,7 +155,11 @@ def check_browser_no_pages_loop():
 
 
 def check_cron_jobs_binding():
-    """Warn if live cron jobs file is not symlinked to repo config."""
+    """Validate live cron jobs file exists and, if symlinked, points to repo config.
+
+    Newer OpenClaw releases may keep a writable managed cron store as a regular
+    file. Treat non-symlink mode as valid.
+    """
     expected = os.path.realpath(
         os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "config", "cron", "jobs.json")
     )
@@ -164,7 +168,6 @@ def check_cron_jobs_binding():
         issues.append("Live cron config missing: ~/.openclaw/cron/jobs.json")
         return
     if not os.path.islink(live):
-        issues.append("Live cron config is not a symlink; repo schedule updates may not apply.")
         return
     target = os.path.realpath(live)
     if target != expected:

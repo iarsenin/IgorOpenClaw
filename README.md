@@ -140,7 +140,52 @@ Also ensure **disk space** is healthy and avoid putting `~/.openclaw/credentials
 ### Other
 
 - **`No pages available in the connected browser`** — managed Chrome has no tab yet; use `browser navigate` first (see `workspace/TOOLS.md`). The post-restart cron warms the browser with `about:blank` after the daily 4 AM gateway restart.
-- **Cron updates not taking effect** — verify `~/.openclaw/cron/jobs.json` is a symlink to repo `config/cron/jobs.json`. `scripts/system-health-check.py` now warns if live cron is not symlinked.
+- **Cron updates not taking effect** — newer OpenClaw releases may keep a writable live copy at `~/.openclaw/cron/jobs.json` (not a symlink). Re-run `bash scripts/setup.sh` to re-seed from repo config, then verify with `openclaw cron list` or apply direct runtime edits with `openclaw cron edit`.
+
+### API keys suddenly "not set" in cron reports
+
+Symptom examples:
+- `OpenAI: OPENAI_ADMIN_KEY not set`
+- `Vapi: VAPI_API_KEY not set`
+- morning brief shows missing `GOG_KEYRING_PASSWORD`
+
+Root cause is usually incomplete `.env` combined with a daemon reinstall/restart path (`openclaw doctor --fix` or setup), so LaunchAgent starts without those vars.
+
+Verify quickly:
+
+```bash
+rg '^(OPENAI_ADMIN_KEY|VAPI_API_KEY|GOG_KEYRING_PASSWORD)=' .env
+launchctl print gui/$(id -u)/ai.openclaw.gateway | rg 'OPENAI_ADMIN_KEY|VAPI_API_KEY|GOG_KEYRING_PASSWORD'
+```
+
+Fix:
+
+1. Add missing keys to `.env` (`OPENAI_ADMIN_KEY`, `VAPI_API_KEY`, `GOG_KEYRING_PASSWORD`).
+2. Re-run setup: `bash scripts/setup.sh`
+3. Re-check daemon env with `launchctl print ...`
+4. Test immediately: `openclaw cron run api-spend-check`
+
+`scripts/setup.sh` now attempts to recover these keys from an existing LaunchAgent plist when `.env` is incomplete and prints a warning if critical vars are still missing. It cannot recover keys that are absent from both `.env` and plist.
+
+### Runtime/config version mismatch ("written by newer OpenClaw")
+
+If logs show `Config was last written by a newer OpenClaw (...)`, your global CLI/runtime was downgraded relative to your config.
+
+Verify:
+
+```bash
+openclaw --version
+npm show openclaw version
+```
+
+Fix:
+
+```bash
+npm install -g openclaw@latest
+bash scripts/setup.sh
+openclaw gateway restart
+openclaw gateway status
+```
 
 ## Security
 

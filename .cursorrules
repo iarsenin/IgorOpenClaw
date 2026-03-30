@@ -96,6 +96,7 @@ Keep this section updated after every change session.
 - **Fallback model:** google/gemini-2.5-pro
 - **WhatsApp:** allowlist-only (owner +19179752041, +19176997436), groups disabled
 - **Gateway:** localhost:18789, token auth (token injected from .env via template)
+- **Env injection guardrails:** `scripts/setup.sh` now warns when critical daemon env vars are missing (`OPENAI_ADMIN_KEY`, `VAPI_API_KEY`, `GOG_KEYRING_PASSWORD`) and attempts recovery from existing LaunchAgent plist.
 - **Browser:** dedicated Chrome debug profile at ~/.openclaw/chrome-profile/ (port 9222)
 - **Daily restart:** 4 AM ET via launchd (ai.openclaw.daily-restart), restarts
   Chrome debug profile + gateway
