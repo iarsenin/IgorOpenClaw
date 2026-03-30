@@ -42,8 +42,8 @@ contains:
 - `workspace/SOUL.md` — agent personality and tone
 - `workspace/USER.md` — user context (timezone, preferences)
 - `workspace/TOOLS.md` — available tools and environment notes
-- `workspace/MEMORY.md` — agent persistent state (active tasks, completed log,
-  learned patterns, corrections)
+- `workspace/MEMORY.template.md` — tracked template for memory structure
+- `workspace/MEMORY.md` — local-only agent runtime state (git-ignored)
 - `workspace/HEARTBEAT.md` — proactive behavior guidelines (references
   config/cron/jobs.json for schedules)
 - `.env.example` — template for required environment variables

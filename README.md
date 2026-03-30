@@ -62,7 +62,8 @@ IgorOpenClaw/
 │   ├── SOUL.md            ← Agent personality and communication style
 │   ├── USER.md            ← User context (timezone, preferences, accounts)
 │   ├── TOOLS.md           ← Available tools and environment notes
-│   ├── MEMORY.md          ← Agent persistent state (active tasks, completed log, learned patterns)
+│   ├── MEMORY.template.md ← Tracked template for local runtime memory file
+│   ├── MEMORY.md          ← Local-only runtime state (git-ignored)
 │   └── HEARTBEAT.md       ← Proactive behavior guidelines (references cron/jobs.json)
 └── scripts/
     ├── setup.sh           ← Bootstrap: copy config from template, symlink workspace+cron, daemon install
@@ -118,6 +119,8 @@ bash scripts/setup.sh    # re-injects config, env vars, and restarts gateway
 ```
 
 Agent workspace files (`workspace/*.md`) take effect on the next agent turn without a restart.
+
+`workspace/MEMORY.md` is intentionally local-only (git-ignored) because it contains fast-changing operational state and personal context. The repository tracks `workspace/MEMORY.template.md`; `scripts/setup.sh` initializes `workspace/MEMORY.md` from that template when missing.
 
 ## Troubleshooting
 

@@ -85,6 +85,14 @@ fi
 ln -sfn "$REPO_DIR/workspace" "$WORKSPACE_DIR"
 echo "Linked: workspace/ -> $WORKSPACE_DIR"
 
+# --- Ensure local-only MEMORY.md exists ---
+MEMORY_TEMPLATE="$REPO_DIR/workspace/MEMORY.template.md"
+MEMORY_FILE="$REPO_DIR/workspace/MEMORY.md"
+if [ ! -f "$MEMORY_FILE" ] && [ -f "$MEMORY_TEMPLATE" ]; then
+    cp "$MEMORY_TEMPLATE" "$MEMORY_FILE"
+    echo "Initialized local workspace/MEMORY.md from template"
+fi
+
 # --- Symlink cron jobs ---
 if [ -f "$REPO_DIR/config/cron/jobs.json" ]; then
     ln -sfn "$REPO_DIR/config/cron/jobs.json" "$CRON_DIR/jobs.json"

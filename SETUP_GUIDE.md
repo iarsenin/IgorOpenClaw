@@ -277,6 +277,10 @@ files the agent reads every turn — **no gateway restart** needed after edits.
 Key files: `AGENTS.md` (rules), `SOUL.md` (tone), `USER.md` (owner context),
 `TOOLS.md` (tools), `MEMORY.md` (persistent tasks), `HEARTBEAT.md` (proactive behavior).
 
+`workspace/MEMORY.md` is local-only runtime state (git-ignored). The repo tracks
+`workspace/MEMORY.template.md`, and `bash scripts/setup.sh` auto-creates
+`workspace/MEMORY.md` from that template when missing.
+
 **Question style:** When the agent needs a **decision or missing detail** from you,
 it should **prefer yes/no or multiple-choice** (A/B/C or 1/2/3) when that fits your
 reply on WhatsApp — not open-ended questions. It should **not** force that format

@@ -29,4 +29,5 @@ logs/
 # Runtime state
 .vapi-seen-calls
 .vapi-pending-outbound
+workspace/MEMORY.md
 workspace/memory/
