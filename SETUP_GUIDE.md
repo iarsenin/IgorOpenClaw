@@ -233,7 +233,7 @@ The live gateway config is **`~/.openclaw/openclaw.json`** (generated from **`co
 The IgorOpenClaw template includes:
 
 - **Identity**: Agent named "Clawd"
-- **Models**: OpenAI `gpt-5.4` as primary, Google `gemini-2.5-pro` as fallback
+- **Models**: OpenAI `gpt-5.4-mini` as primary, Google `gemini-2.5-pro` as fallback
 - **Gateway**: Bound to localhost (mode: local), port 18789, token auth enabled
 - **WhatsApp**: Enabled with `allowFrom` phone number restriction, groups disabled
 - **Logging**: Logs written to `/tmp/openclaw/openclaw-YYYY-MM-DD.log` (rotated daily)
@@ -257,7 +257,7 @@ To change which models are used:
 ```json5
 agent: {
   model: {
-    primary: "openai/gpt-5.4",            // current default in this repo
+    primary: "openai/gpt-5.4-mini",       // current default in this repo
     fallbacks: ["google/gemini-2.5-pro"], // or "google/gemini-2.5-flash" for cheaper
   },
 },
@@ -582,7 +582,7 @@ openclaw gateway status
 
 # 2. Models are configured
 openclaw models list
-# Expected: shows openai/gpt-5.4 and google/gemini-2.5-pro
+# Expected: shows openai/gpt-5.4-mini and google/gemini-2.5-pro
 
 # 3. Skills are installed
 openclaw skills list

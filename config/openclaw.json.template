@@ -4,14 +4,14 @@
   // Token is injected from .env by setup.sh — DO NOT hardcode secrets here.
 
   meta: {
-    lastTouchedVersion: "2026.3.13",
-    lastTouchedAt: "2026-03-20T21:04:06.667Z",
+    lastTouchedVersion: "2026.3.28",
+    lastTouchedAt: "2026-03-30T11:26:06Z",
   },
 
   agents: {
     defaults: {
       model: {
-        primary: "openai/gpt-5.4",
+        primary: "openai/gpt-5.4-mini",
         fallbacks: ["google/gemini-2.5-pro"],
       },
       workspace: "~/.openclaw/workspace",
