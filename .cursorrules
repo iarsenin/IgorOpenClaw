@@ -34,8 +34,8 @@ contains:
 
 ## File layout
 
-- `config/openclaw.json.template` — multi-model config template (OpenAI primary,
-  Gemini fallback), WhatsApp channel, security settings. Auth token placeholder
+- `config/openclaw.json.template` — multi-model config template (Gemini primary,
+  OpenAI fallback), WhatsApp channel, security settings. Auth token placeholder
   `__OPENCLAW_AUTH_TOKEN__` is injected from `.env` at setup time.
 - `config/cron/jobs.json` — scheduled/heartbeat job definitions
 - `workspace/AGENTS.md` — operational rules, task routing, and **Questions to the user** (prefer y/n and multiple choice when practical)
@@ -92,8 +92,8 @@ tail -50 /tmp/openclaw/openclaw-$(date +%Y-%m-%d).log
 
 Keep this section updated after every change session.
 
-- **Primary model:** openai/gpt-5.4-mini
-- **Fallback model:** google/gemini-2.5-pro
+- **Primary model:** google/gemini-2.5-pro
+- **Fallback model:** openai/gpt-5.4-mini
 - **WhatsApp:** allowlist-only (owner +19179752041, +19176997436), groups disabled
 - **Gateway:** localhost:18789, token auth (token injected from .env via template)
 - **Env injection guardrails:** `scripts/setup.sh` now warns when critical daemon env vars are missing (`OPENAI_ADMIN_KEY`, `VAPI_API_KEY`, `GOG_KEYRING_PASSWORD`) and attempts recovery from existing LaunchAgent plist.
@@ -104,7 +104,10 @@ Keep this section updated after every change session.
   api-spend-check (5:00 AM — OpenAI+Vapi last-24h $ + Cursor plan status → WhatsApp; uses OPENAI_ADMIN_KEY; reads Cursor token from local SQLite),
   email triage (every 2h 8AM-10PM), chrono24-listing-monitor (5× daily if MEMORY
   has Chrono24 task), sms-reply-monitor (~every 2h 8:30AM–8:30PM ET, **sms-watch**),
-  inbound call check (every 30 min), system health (every 6h). Browser-using
+  inbound call check (5×/day), system health (5×/day). Cron jobs use
+  `--no-deliver` — the agent sends WhatsApp messages explicitly via the
+  `message` tool (target +19179752041) rather than relying on framework
+  delivery. Browser-using
   crons must end with **browser close** (AGENTS.md § Browser hygiene).
 - **Task persistence:** ongoing tasks written to MEMORY.md → Active Tasks with
   TTL (default 7 days), explicit done-when criteria, 48h staleness rule.

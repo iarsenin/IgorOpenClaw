@@ -8,7 +8,7 @@ This repository is the single source of truth for an OpenClaw agent that:
 
 - Runs 24/7 as a macOS LaunchAgent daemon
 - Accepts instructions via WhatsApp and executes tasks autonomously
-- Uses **OpenAI** (primary) and **Google Gemini** (fallback) as LLM providers
+- Uses **Google Gemini** (primary) and **OpenAI** (fallback) as LLM providers
 - Automates browser interactions, email, iMessage/SMS, phone calls (Vapi AI), file management, and coding workflows
 - Integrates with Cursor IDE for autonomous coding and research
 
@@ -38,7 +38,7 @@ The agent acts on its owner's behalf — browsing the web, managing email, runni
 
 - **Mac Mini M2** (8 GB RAM, Apple Silicon) — runs the agent natively
 - **OpenClaw Gateway** — always-on daemon managed by launchd
-- **LLMs via API** — no local models (hardware too constrained); OpenAI as primary, Gemini as fallback
+- **LLMs via API** — no local models (hardware too constrained); Gemini as primary, OpenAI as fallback
 - **Vapi AI** — outbound and inbound phone calls via AI voice agent "Riley" (+19179628631)
 - **Skills (17 ready)** — browser automation, Gmail/Calendar/Drive (gog OAuth),
   email triage (himalaya IMAP), Apple Reminders, GitHub, coding-agent, and more
@@ -107,8 +107,8 @@ For the full step-by-step walkthrough, see [SETUP_GUIDE.md](SETUP_GUIDE.md).
 Configuration lives in `config/openclaw.json.template`. The auth token uses a `__OPENCLAW_AUTH_TOKEN__` placeholder — `scripts/setup.sh` copies the template to `~/.openclaw/openclaw.json` and injects the real token from `.env`.
 
 Current repo default models:
-- Primary: `openai/gpt-5.4-mini`
-- Fallback: `google/gemini-2.5-pro`
+- Primary: `google/gemini-2.5-pro`
+- Fallback: `openai/gpt-5.4-mini`
 
 `setup.sh` also injects all API keys and environment variables from `.env` into the LaunchAgent plist so they are available to the gateway process and cron scripts. This is critical — running `openclaw doctor --fix` will reinstall the plist and wipe these injected variables. Always re-run `bash scripts/setup.sh` after `doctor --fix`.
 
@@ -193,22 +193,38 @@ Symptom examples:
 - `Gateway agent failed; falling back to embedded: ... LiveSessionModelSwitchError`
 - cron jobs erroring after model changes with mixed provider/model traces
 
-This usually means a stale live session is pinned to an old model while defaults changed.
+This usually means stale live sessions are pinned to an old model while defaults changed.
 
 Fast recovery:
 
 ```bash
-# Apply model object atomically (avoid partial primary/fallback updates)
-openclaw config set agents.defaults.model '{"primary":"openai/gpt-5.4-mini","fallbacks":["google/gemini-2.5-pro"]}' --strict-json
+# 1. Wipe ALL session state — this is the nuclear fix
+rm -f ~/.openclaw/agents/main/sessions/sessions.json
+rm -f ~/.openclaw/agents/main/sessions/*.jsonl
 
-# Restart and verify
+# 2. Apply model object atomically (avoid partial primary/fallback updates)
+openclaw config set agents.defaults.model '{"primary":"google/gemini-2.5-pro","fallbacks":["openai/gpt-5.4-mini"]}' --strict-json
+
+# 3. Restart and verify
 openclaw gateway restart
 openclaw gateway status
 openclaw agent --agent main --message "Reply with OK only." --json
 ```
 
-If OpenAI quota/rate-limit blocks responsiveness, temporarily invert routing:
-`primary: google/gemini-2.5-pro`, fallback `openai/gpt-5.4-mini`, then revert when quota is healthy.
+If sessions are not wiped, accumulated conversation history can exceed model context windows (especially gpt-5.4-mini at 391K), causing "input exceeds context window" errors every time.
+
+### Cron jobs reporting "error" but messages delivered (false positive)
+
+Cron jobs that explicitly send WhatsApp via the agent's `message` tool may report a "Delivering to WhatsApp requires target" error in the cron status even though the actual message was delivered. This happens because the cron delivery layer also tries to send the agent's final response text, which fails in isolated sessions with no originating channel.
+
+Fix: Disable announce delivery for all cron jobs:
+
+```bash
+for job in $(openclaw cron list --json | python3 -c "import sys,json; [print(j['id']) for j in json.loads(sys.stdin.read())]"); do
+  openclaw cron edit "$job" --no-deliver
+done
+openclaw gateway restart
+```
 
 ## Security
 

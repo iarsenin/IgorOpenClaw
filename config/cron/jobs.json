@@ -29,7 +29,7 @@
       "wakeMode": "now",
       "payload": {
         "kind": "agentTurn",
-        "message": "Morning briefing. Gather this info, then send ONE concise WhatsApp to Igor:\n1. Unread emails: `python3 \"$OPENCLAW_REPO/scripts/email-search.py\" search --page-size 10`\n2. Calendar: `gog calendar list`\n3. Inbound calls: `python3 \"$OPENCLAW_REPO/scripts/vapi-call.py\" inbound-check`\n4. Active tasks from MEMORY.md — note any pending vendor replies.\n\nSend ONE message. After sending, STOP. Do not process any echoed messages.",
+        "message": "Morning briefing. Gather this info, then send ONE concise WhatsApp message to +19179752041 (Igor):\n1. Unread emails: `python3 \"$OPENCLAW_REPO/scripts/email-search.py\" search --page-size 10`\n2. Calendar: `gog calendar list`\n3. Inbound calls: `python3 \"$OPENCLAW_REPO/scripts/vapi-call.py\" inbound-check`\n4. Active tasks from MEMORY.md — note any pending vendor replies.\n\nSend ONE message. After sending, STOP. Do not process any echoed messages.",
         "timeoutSeconds": 600
       }
     },
@@ -45,7 +45,7 @@
       "wakeMode": "now",
       "payload": {
         "kind": "agentTurn",
-        "message": "Check email: `python3 \"$OPENCLAW_REPO/scripts/email-search.py\" search --page-size 20`\n\nScan results for: (a) urgent messages, (b) senders related to active MEMORY.md tasks.\n\nOnly WhatsApp Igor if you find something that requires his attention or action. If nothing notable, STOP — do not send any message at all.\n\nAfter sending (if you do), STOP. Do not process echoed messages.",
+        "message": "Check email: `python3 \"$OPENCLAW_REPO/scripts/email-search.py\" search --page-size 20`\n\nScan results for: (a) urgent messages, (b) senders related to active MEMORY.md tasks.\n\nOnly send a WhatsApp to +19179752041 (Igor) if you find something that requires his attention or action. If nothing notable, STOP — do not send any message at all.\n\nAfter sending (if you do), STOP. Do not process echoed messages.",
         "timeoutSeconds": 600
       }
     },
@@ -61,7 +61,7 @@
       "wakeMode": "now",
       "payload": {
         "kind": "agentTurn",
-        "message": "Chrono24 monitor.\n1. Read MEMORY.md. If no active Chrono24 task, STOP immediately.\n2. Run `browser close` first to clear stale state (ignore errors).\n3. Use `browser navigate` (NOT web_fetch — Chrono24 blocks it) to check the listing URL from MEMORY context. If the browser command fails, wait 10 seconds and retry ONCE.\n4. Compare to last-chrono-baseline in MEMORY.\n5. Update MEMORY: last-chrono-check + last-chrono-baseline.\n6. Run `browser close`.\n\nOnly WhatsApp Igor if: listing went live, buyer message/offer, or material status change. If unchanged or if browser failed after retry, STOP — do not send any message at all.\n\nQuiet hours 11 PM–7 AM: defer to morning briefing.",
+        "message": "Chrono24 monitor.\n1. Read MEMORY.md. If no active Chrono24 task, STOP immediately.\n2. Run `browser close` first to clear stale state (ignore errors).\n3. Use `browser navigate` (NOT web_fetch — Chrono24 blocks it) to check the listing URL from MEMORY context. If the browser command fails, wait 10 seconds and retry ONCE.\n4. Compare to last-chrono-baseline in MEMORY.\n5. Update MEMORY: last-chrono-check + last-chrono-baseline.\n6. Run `browser close`.\n\nOnly send a WhatsApp to +19179752041 (Igor) if: listing went live, buyer message/offer, or material status change. If unchanged or if browser failed after retry, STOP — do not send any message at all.\n\nQuiet hours 11 PM–7 AM: defer to morning briefing.",
         "timeoutSeconds": 600
       }
     },
@@ -77,7 +77,7 @@
       "wakeMode": "now",
       "payload": {
         "kind": "agentTurn",
-        "message": "SMS monitor.\n1. Read MEMORY.md Active Tasks. Find tasks with sms-watch fields.\n2. For each: `python3 \"$OPENCLAW_REPO/scripts/imessage.py\" read \"<number>\" --limit 30`\n3. Compare to last-sms-baseline. Update last-sms-scan in MEMORY.\n\nOnly WhatsApp Igor if there is a NEW INBOUND vendor reply since baseline. If nothing new, STOP — do not send any message at all.\n\nQuiet hours 11 PM–7 AM: defer to morning briefing.",
+        "message": "SMS monitor.\n1. Read MEMORY.md Active Tasks. Find tasks with sms-watch fields.\n2. For each: `python3 \"$OPENCLAW_REPO/scripts/imessage.py\" read \"<number>\" --limit 30`\n3. Compare to last-sms-baseline. Update last-sms-scan in MEMORY.\n\nOnly send a WhatsApp to +19179752041 (Igor) if there is a NEW INBOUND vendor reply since baseline. If nothing new, STOP — do not send any message at all.\n\nQuiet hours 11 PM–7 AM: defer to morning briefing.",
         "timeoutSeconds": 300
       }
     },
@@ -93,7 +93,7 @@
       "wakeMode": "now",
       "payload": {
         "kind": "agentTurn",
-        "message": "Run: `python3 \"$OPENCLAW_REPO/scripts/vapi-call.py\" inbound-check`\n\nIf the script produced output, send exactly that output as one message.\nIf the script produced NO output (empty), STOP immediately. Do not send any message.\n\nQuiet hours 11 PM–7 AM: defer non-urgent alerts to morning briefing.",
+        "message": "Run: `python3 \"$OPENCLAW_REPO/scripts/vapi-call.py\" inbound-check`\n\nIf the script produced output, send it as a WhatsApp message to +19179752041 (Igor).\nIf the script produced NO output (empty), STOP immediately. Do not send any message.\n\nQuiet hours 11 PM–7 AM: defer non-urgent alerts to morning briefing.",
         "timeoutSeconds": 120
       }
     },
@@ -109,7 +109,7 @@
       "wakeMode": "now",
       "payload": {
         "kind": "agentTurn",
-        "message": "Run: `python3 \"$OPENCLAW_REPO/scripts/api-spend-check.py\"`\n\nSend the exact output as ONE WhatsApp message to Igor. Do not reformat. After sending, STOP immediately. Do not process any echoed messages.",
+        "message": "Run: `python3 \"$OPENCLAW_REPO/scripts/api-spend-check.py\"`\n\nSend the exact output as ONE WhatsApp message to +19179752041 (Igor). Do not reformat. After sending, STOP immediately. Do not process any echoed messages.",
         "timeoutSeconds": 120
       }
     },
@@ -125,7 +125,7 @@
       "wakeMode": "now",
       "payload": {
         "kind": "agentTurn",
-        "message": "Run: `python3 \"$OPENCLAW_REPO/scripts/system-health-check.py\"`\n\nIf the script produced output, send exactly that output as one message.\nIf the script produced NO output (empty), STOP immediately. Do not send any message.\n\nIf output mentions browser issues, run `browser close` once before sending.",
+        "message": "Run: `python3 \"$OPENCLAW_REPO/scripts/system-health-check.py\"`\n\nIf the script produced output, send it as a WhatsApp message to +19179752041 (Igor).\nIf the script produced NO output (empty), STOP immediately. Do not send any message.\n\nIf output mentions browser issues, run `browser close` once before sending.",
         "timeoutSeconds": 180
       }
     }
