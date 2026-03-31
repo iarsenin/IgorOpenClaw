@@ -31,6 +31,9 @@
     elevated: {
       enabled: true,
     },
+    exec: {
+      host: "gateway",
+    },
   },
 
   commands: {
