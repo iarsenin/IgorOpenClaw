@@ -64,6 +64,12 @@ Folder: `--folder inbox` (default), `sent`, `all`, `drafts`, `trash`
   - Yahoo `all` searches Inbox+Sent+Draft+Trash and prints IDs as `<Folder>:<ID>`; pass that same ID to `read --account yahoo --id ...`
 Account: `--account both` (default), `gmail`, `yahoo`
 
+**When to broaden the search:** If a `--from` search returns zero results, try:
+1. `--folder all` (searches all folders, not just inbox)
+2. `--body` or `--subject` with a keyword instead of sender
+3. Both accounts explicitly: `--account gmail` then `--account yahoo`
+Note: some senders (e.g. medical portals) use a noreply domain different from the brand name.
+
 ### Read a specific email
 
 ```bash

@@ -5,7 +5,7 @@
 
   meta: {
     lastTouchedVersion: "2026.3.28",
-    lastTouchedAt: "2026-03-30T11:26:06Z",
+    lastTouchedAt: "2026-04-01T15:00:00Z",
   },
 
   agents: {
@@ -32,7 +32,17 @@
       enabled: true,
     },
     exec: {
+      // host: "gateway" makes all exec default to gateway host.
+      // Cron/isolated sessions have no approval UI, so exec-approvals.json
+      // must have askFallback: "full" — this auto-approves exec when no
+      // UI is available. The agent may first attempt host=sandbox (fails),
+      // then retry with gateway (succeeds via askFallback). Those first-
+      // attempt errors in the log are cosmetic; exec works correctly.
       host: "gateway",
+      pathPrepend: [
+        "/Library/Frameworks/Python.framework/Versions/3.10/bin",
+        "/opt/homebrew/bin",
+      ],
     },
   },
 
