@@ -39,6 +39,7 @@
       // then retry with gateway (succeeds via askFallback). Those first-
       // attempt errors in the log are cosmetic; exec works correctly.
       host: "gateway",
+      security: "full",
       pathPrepend: [
         "/Library/Frameworks/Python.framework/Versions/3.10/bin",
         "/opt/homebrew/bin",

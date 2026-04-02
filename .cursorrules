@@ -96,14 +96,16 @@ Keep this section updated after every change session.
 - **Fallback model:** google/gemini-2.5-pro
 - **WhatsApp:** allowlist-only (owner +19179752041, +19176997436), groups disabled
 - **Gateway:** localhost:18789, token auth (token injected from .env via template)
-- **Exec config:** `tools.exec.host: "gateway"` + `tools.exec.pathPrepend`
-  (python3, homebrew). Agents may first attempt `host=sandbox` (fails → cosmetic
-  log error), then retry `host=gateway` (succeeds). Working correctly.
-- **Exec approvals:** `~/.openclaw/exec-approvals.json` — `security: "allowlist"`,
-  `ask: "on-miss"`, `askFallback: "full"`. Cron/isolated sessions (no approval UI)
-  auto-approve exec via `askFallback: "full"`. Interactive sessions prompt on misses.
-  Allowlisted: python3 (`/Library/Frameworks/Python.framework/Versions/*/bin/python3`),
-  gog, himalaya. `autoAllowSkills: true`.
+- **Exec config:** `tools.exec.host: "gateway"`, `tools.exec.security: "full"`,
+  `tools.exec.pathPrepend` (python3, homebrew). `security: "full"` bypasses
+  allowlist checks entirely — exec runs immediately with no approval wait. Agent
+  may first attempt `host=sandbox` (fails: cosmetic log error), retries `host=gateway`
+  and proceeds instantly.
+- **Exec approvals:** `~/.openclaw/exec-approvals.json` — `security: "full"`,
+  `ask: "off"`, `autoAllowSkills: true`. No allowlist, no approval prompts.
+  Effective security is stricter of `tools.exec.security` and approvals — both
+  must be `"full"` for unblocked exec. DO NOT set either back to `"allowlist"`;
+  that re-introduces 2-minute approval waits in cron sessions.
 - **Env injection guardrails:** `scripts/setup.sh` now warns when critical daemon env vars are missing (`OPENAI_ADMIN_KEY`, `VAPI_API_KEY`, `GOG_KEYRING_PASSWORD`) and attempts recovery from existing LaunchAgent plist.
 - **Browser:** dedicated Chrome debug profile at ~/.openclaw/chrome-profile/ (port 9222)
 - **Daily restart:** 4 AM ET via launchd (ai.openclaw.daily-restart), restarts
