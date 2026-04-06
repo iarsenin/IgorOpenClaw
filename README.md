@@ -1,5 +1,8 @@
 # IgorOpenClaw
 
+> **STATUS: SHUT DOWN (2026-04-06).** Gateway stopped, LaunchAgents removed.
+> Repo preserved for future reinstall. See [Restoring Clawd](#restoring-clawd) below.
+
 Version-controlled configuration and workspace for an always-on [OpenClaw](https://github.com/openclaw/openclaw) autonomous AI agent running on a Mac Mini M2.
 
 ## Purpose
@@ -225,6 +228,36 @@ for job in $(openclaw cron list --json | python3 -c "import sys,json; [print(j['
 done
 openclaw gateway restart
 ```
+
+## Restoring Clawd
+
+Complete checklist to bring the agent back online after the 2026-04-06 shutdown:
+
+1. **Add OpenAI credits** — [platform.openai.com/settings/billing](https://platform.openai.com/settings/billing)
+   Then restore the primary model in `config/openclaw.json.template`:
+   ```
+   primary: "openai/gpt-5.4-mini",
+   fallbacks: ["google/gemini-2.5-pro"],
+   ```
+
+2. **Add Yahoo email credentials** to `.env` (currently missing):
+   ```
+   YAHOO_USER=arsenin@yahoo.com
+   YAHOO_APP_PASSWORD=<yahoo-app-password>
+   ```
+
+3. **Run setup** to install LaunchAgents and start the gateway:
+   ```bash
+   bash scripts/setup.sh
+   ```
+
+4. **Re-pair WhatsApp** (session had 440 conflict at shutdown):
+   - On iPhone: WhatsApp → Settings → Linked Devices → log out all devices
+   - Then: `openclaw channels login --channel whatsapp`
+
+5. **Verify**: `openclaw gateway status` and check WhatsApp delivers a test message.
+
+See `SETUP_GUIDE.md` for the full detailed walkthrough.
 
 ## Security
 

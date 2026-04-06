@@ -12,7 +12,7 @@ contains:
 - `config/openclaw.json.template` — main OpenClaw configuration template (secrets
   injected from `.env` by `scripts/setup.sh` into `~/.openclaw/openclaw.json` —
   generated file is git-ignored)
-- `config/riley-voice-behavior.md` — canonical Vapi assistant voicemail + callback policy (merge into Riley’s system prompt)
+- `config/riley-voice-behavior.md` — canonical Vapi assistant voicemail + callback policy (merge into Riley's system prompt)
 - `workspace/` — OpenClaw agent workspace files (AGENTS.md, SOUL.md, etc.),
   symlinked into `~/.openclaw/workspace/`
 - `scripts/` — setup, teardown, and integration helpers (imessage.py, whatsapp.py,
@@ -90,61 +90,58 @@ tail -50 /tmp/openclaw/openclaw-$(date +%Y-%m-%d).log
 
 ## Current state snapshot
 
-Keep this section updated after every change session.
+**STATUS: SHUT DOWN as of 2026-04-06.** Gateway stopped, all LaunchAgents
+removed. Repo preserved for future reinstall. See `SETUP_GUIDE.md` to
+bring back online.
 
-- **Primary model:** google/gemini-2.5-pro (TEMPORARY — OpenAI account out of quota as of 2026-04-06; restore to openai/gpt-5.4-mini after adding credits at platform.openai.com)
+### To restore Clawd — checklist before running setup.sh
+
+1. **Add OpenAI credits** at https://platform.openai.com/settings/billing
+   (account hit quota limit 2026-04-06; caused 8,696 errors / retry storm)
+   Then restore primary model in `config/openclaw.json.template`:
+   `primary: "openai/gpt-5.4-mini"` and `fallbacks: ["google/gemini-2.5-pro"]`
+
+2. **Add Yahoo email creds** — add these two lines to `.env` before running `setup.sh`:
+   ```
+   YAHOO_USER=arsenin@yahoo.com
+   YAHOO_APP_PASSWORD=<your-yahoo-app-password>
+   ```
+
+3. Run `scripts/setup.sh` to inject `.env` into the LaunchAgent plist and start the gateway.
+
+4. **Re-pair WhatsApp** — after gateway starts, run:
+   ```bash
+   openclaw channels login --channel whatsapp
+   ```
+   Session had a 440 conflict (registered=False). If QR code doesn't appear,
+   first clear all Linked Devices on the phone:
+   WhatsApp app → Settings → Linked Devices → tap each → Log Out.
+
+### Last known working config (before shutdown)
+
+- **Primary model (at shutdown):** google/gemini-2.5-pro (OpenAI quota exhausted; restore after adding credits — see step 1)
 - **Fallback model:** openai/gpt-5.4-mini
-- **WhatsApp:** allowlist-only (owner +19179752041, +19176997436), groups disabled. **Session has 440 conflict (registered=False)** — fix: open WhatsApp phone app → Settings → Linked Devices → log out all → then run `openclaw channels login --channel whatsapp`
+- **WhatsApp:** allowlist-only (+19179752041, +19176997436), groups disabled
 - **Gateway:** localhost:18789, token auth (token injected from .env via template)
-- **Exec config:** `tools.exec.host: "gateway"`, `tools.exec.security: "full"`,
-  `tools.exec.pathPrepend` (python3, homebrew). `security: "full"` bypasses
-  allowlist checks entirely — exec runs immediately with no approval wait. Agent
-  may first attempt `host=sandbox` (fails: cosmetic log error), retries `host=gateway`
-  and proceeds instantly.
-- **Exec approvals:** `~/.openclaw/exec-approvals.json` — `security: "full"`,
-  `ask: "off"`, `autoAllowSkills: true`. No allowlist, no approval prompts.
-  Effective security is stricter of `tools.exec.security` and approvals — both
-  must be `"full"` for unblocked exec. DO NOT set either back to `"allowlist"`;
-  that re-introduces 2-minute approval waits in cron sessions.
-- **Env injection guardrails:** `scripts/setup.sh` now warns when critical daemon env vars are missing (`OPENAI_ADMIN_KEY`, `VAPI_API_KEY`, `GOG_KEYRING_PASSWORD`) and attempts recovery from existing LaunchAgent plist.
-- **Browser:** dedicated Chrome debug profile at ~/.openclaw/chrome-profile/ (port 9222)
-- **Daily restart:** 4 AM ET via launchd (ai.openclaw.daily-restart), restarts
-  Chrome debug profile + gateway
+- **Exec config:** `host: "gateway"`, `security: "full"`, pathPrepend (python3, homebrew).
+  KEEP `security: "full"` on BOTH `tools.exec` in openclaw.json AND
+  `~/.openclaw/exec-approvals.json` (`ask: "off"`, `autoAllowSkills: true`).
+  Reverting either to `"allowlist"` re-introduces 2-minute approval waits in cron sessions.
+- **Browser:** Chrome debug profile at `~/.openclaw/chrome-profile/` (port 9222)
+- **Daily restart:** 4 AM ET via launchd (`ai.openclaw.daily-restart`)
 - **Cron jobs:** post-restart-resume (4:05 AM), morning briefing (7:30 AM),
-  api-spend-check (5:00 AM — OpenAI+Vapi last-24h $ + Cursor plan status → WhatsApp; uses OPENAI_ADMIN_KEY; reads Cursor token from local SQLite),
-  email triage (every 2h 8AM-10PM), chrono24-listing-monitor (5× daily if MEMORY
-  has Chrono24 task), sms-reply-monitor (~every 2h 8:30AM–8:30PM ET, **sms-watch**),
-  inbound call check (5×/day), system health (5×/day). Cron jobs use
-  `--no-deliver` — the agent sends WhatsApp messages explicitly via the
-  `message` tool (target +19179752041) rather than relying on framework
-  delivery. Browser-using
-  crons must end with **browser close** (AGENTS.md § Browser hygiene).
-- **Task persistence:** ongoing tasks written to MEMORY.md → Active Tasks with
-  TTL (default 7 days), explicit done-when criteria, 48h staleness rule.
-  See AGENTS.md § Task Persistence for full rules.
-- **Skills installed (17 ready):**
-  - ClawHub: browser-automation, screenshot
-  - Bundled: coding-agent, gemini, github, gh-issues, peekaboo, summarize,
-    healthcheck, openai-image-gen, openai-whisper-api, weather, skill-creator,
-    node-connect
-  - Newly added: gog (Google Workspace), himalaya (email IMAP/SMTP),
-    apple-reminders (remindctl)
-- **iMessage/SMS:** scripts/imessage.py (reads chat.db, sends via AppleScript).
-  Requires Full Disk Access for python3 binary. Read=autonomous, send=ask user.
-- **Phone calls:** scripts/vapi-call.py (outbound + inbound via Vapi AI).
-  Voice agent "Riley" (assistant ID in VAPI_ASSISTANT_ID env var).
-  Outbound number: +19179628631. Fallback: +19179752041 (Igor's cell).
-  Always ask user before dialing outbound; ask whether Riley may leave a callback
-  number on voicemail, and encode YES/NO in the task string (see TOOLS.md).
-  Cost ~11¢/min.
-  Inbound calls auto-answered by Riley (takes messages, blocks spam).
-  Inbound polling: cron every 30 min → vapi-call.py inbound-check → WhatsApp alert.
-  Voicemail/callback policy: `config/riley-voice-behavior.md` + per-call injection in `vapi-call.py`.
-  See TOOLS.md § Phone Calls for full architecture and troubleshooting.
-- **Email:** himalaya CLI (IMAP/SMTP with Gmail app password) + gog gmail (OAuth).
-  Yahoo email (`arsenin@yahoo.com`) is configured in himalaya but `YAHOO_USER` /
-  `YAHOO_APP_PASSWORD` are NOT yet in `.env` or the plist — Yahoo searches silently
-  skip. To enable: add both vars to `.env` and re-run `scripts/setup.sh`.
+  api-spend-check (5:00 AM — uses OPENAI_ADMIN_KEY; reads Cursor token from local SQLite),
+  email triage (every 2h 8AM-10PM), chrono24-listing-monitor (5x/day),
+  sms-reply-monitor (~every 2h 8:30AM-8:30PM), inbound-call-check (5x/day), system-health (5x/day).
+  Cron jobs use `--no-deliver`; agent sends WhatsApp via `message` tool explicitly.
+  Browser-using crons must end with `browser close`.
+- **Task persistence:** MEMORY.md, TTL 7 days, staleness 48h. See AGENTS.md.
+- **Skills (17):** browser-automation, screenshot, coding-agent, gemini, github,
+  gh-issues, peekaboo, summarize, healthcheck, openai-image-gen, openai-whisper-api,
+  weather, skill-creator, node-connect, gog, himalaya, apple-reminders
+- **iMessage/SMS:** scripts/imessage.py — requires Full Disk Access for python3 binary.
+- **Phone calls:** scripts/vapi-call.py — Riley assistant (VAPI_ASSISTANT_ID in .env).
+  Outbound: +19179628631. Cost ~11c/min. Always ask before dialing.
+- **Email:** Gmail works (himalaya + gog OAuth). Yahoo NOT wired (see step 2).
 - **Calendar/Drive/Contacts:** gog CLI (OAuth, project polar-city-407401)
-- **User questions:** When Clawd needs a decision or missing info from Igor, prefer **yes/no** or **multiple-choice** (A/B/C) when it fits; don’t force when only open-ended works. See `workspace/AGENTS.md` § Questions to the user.
 - **GitHub:** https://github.com/iarsenin/IgorOpenClaw (private)
