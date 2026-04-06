@@ -92,9 +92,9 @@ tail -50 /tmp/openclaw/openclaw-$(date +%Y-%m-%d).log
 
 Keep this section updated after every change session.
 
-- **Primary model:** openai/gpt-5.4-mini
-- **Fallback model:** google/gemini-2.5-pro
-- **WhatsApp:** allowlist-only (owner +19179752041, +19176997436), groups disabled
+- **Primary model:** google/gemini-2.5-pro (TEMPORARY — OpenAI account out of quota as of 2026-04-06; restore to openai/gpt-5.4-mini after adding credits at platform.openai.com)
+- **Fallback model:** openai/gpt-5.4-mini
+- **WhatsApp:** allowlist-only (owner +19179752041, +19176997436), groups disabled. **Session has 440 conflict (registered=False)** — fix: open WhatsApp phone app → Settings → Linked Devices → log out all → then run `openclaw channels login --channel whatsapp`
 - **Gateway:** localhost:18789, token auth (token injected from .env via template)
 - **Exec config:** `tools.exec.host: "gateway"`, `tools.exec.security: "full"`,
   `tools.exec.pathPrepend` (python3, homebrew). `security: "full"` bypasses

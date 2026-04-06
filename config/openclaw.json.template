@@ -5,14 +5,16 @@
 
   meta: {
     lastTouchedVersion: "2026.3.28",
-    lastTouchedAt: "2026-04-01T15:00:00Z",
+    lastTouchedAt: "2026-04-06T11:30:00Z",
   },
 
   agents: {
     defaults: {
       model: {
-        primary: "openai/gpt-5.4-mini",
-        fallbacks: ["google/gemini-2.5-pro"],
+        // Gemini is primary while OpenAI account is out of quota.
+        // Restore to openai/gpt-5.4-mini once credits are added.
+        primary: "google/gemini-2.5-pro",
+        fallbacks: ["openai/gpt-5.4-mini"],
       },
       workspace: "~/.openclaw/workspace",
     },
