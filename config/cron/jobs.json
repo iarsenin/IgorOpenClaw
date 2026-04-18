@@ -86,7 +86,7 @@
       "name": "Inbound Call Check",
       "description": "Check for new calls (inbound + completed outbound)",
       "agentId": "main",
-      "schedule": { "kind": "cron", "expr": "15 8,11,14,17,20 * * *" },
+      "schedule": { "kind": "cron", "expr": "*/30 * * * *" },
       "timezone": "America/New_York",
       "enabled": true,
       "sessionTarget": "isolated",

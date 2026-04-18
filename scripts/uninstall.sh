@@ -12,6 +12,7 @@ echo ""
 
 # --- Stop daemon and unload LaunchAgent ---
 PLIST="$HOME/Library/LaunchAgents/ai.openclaw.gateway.plist"
+DAILY_RESTART_PLIST="$HOME/Library/LaunchAgents/ai.openclaw.daily-restart.plist"
 if command -v openclaw &>/dev/null; then
     echo "Stopping OpenClaw gateway..."
     openclaw gateway stop 2>/dev/null || true
@@ -20,6 +21,11 @@ if [ -f "$PLIST" ]; then
     launchctl unload "$PLIST" 2>/dev/null || true
     rm -f "$PLIST"
     echo "Removed LaunchAgent: $PLIST"
+fi
+if [ -f "$DAILY_RESTART_PLIST" ]; then
+    launchctl unload "$DAILY_RESTART_PLIST" 2>/dev/null || true
+    rm -f "$DAILY_RESTART_PLIST"
+    echo "Removed LaunchAgent: $DAILY_RESTART_PLIST"
 fi
 
 # --- Remove symlinks ---

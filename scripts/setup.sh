@@ -10,6 +10,9 @@ OPENCLAW_DIR="$HOME/.openclaw"
 WORKSPACE_DIR="$OPENCLAW_DIR/workspace"
 CRON_DIR="$OPENCLAW_DIR/cron"
 PLIST="$HOME/Library/LaunchAgents/ai.openclaw.gateway.plist"
+DAILY_RESTART_PLIST="$HOME/Library/LaunchAgents/ai.openclaw.daily-restart.plist"
+SCRIPTS_DIR="$OPENCLAW_DIR/scripts"
+LOG_DIR="$OPENCLAW_DIR/logs"
 
 echo "=== IgorOpenClaw Setup ==="
 echo "Repo: $REPO_DIR"
@@ -68,6 +71,9 @@ fi
 # --- Create directories ---
 mkdir -p "$OPENCLAW_DIR"
 mkdir -p "$CRON_DIR"
+mkdir -p "$SCRIPTS_DIR"
+mkdir -p "$LOG_DIR"
+mkdir -p "$HOME/Library/LaunchAgents"
 
 # --- Generate config from template (secrets injected from .env) ---
 TEMPLATE="$REPO_DIR/config/openclaw.json.template"
@@ -114,12 +120,51 @@ if [ -f "$REPO_DIR/config/cron/jobs.json" ]; then
 fi
 
 # --- Copy scripts locally (Google Drive files have com.apple.provenance which blocks launchd) ---
-SCRIPTS_DIR="$OPENCLAW_DIR/scripts"
-mkdir -p "$SCRIPTS_DIR"
 if [ -f "$REPO_DIR/scripts/daily-restart.sh" ]; then
     cp "$REPO_DIR/scripts/daily-restart.sh" "$SCRIPTS_DIR/daily-restart.sh"
     chmod +x "$SCRIPTS_DIR/daily-restart.sh"
     echo "Copied: scripts/daily-restart.sh -> $SCRIPTS_DIR/"
+fi
+
+# --- Install daily restart LaunchAgent ---
+if [ -x "$SCRIPTS_DIR/daily-restart.sh" ]; then
+    cat > "$DAILY_RESTART_PLIST" <<EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>ai.openclaw.daily-restart</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>$SCRIPTS_DIR/daily-restart.sh</string>
+  </array>
+  <key>RunAtLoad</key>
+  <false/>
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Hour</key>
+    <integer>4</integer>
+    <key>Minute</key>
+    <integer>0</integer>
+  </dict>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+  </dict>
+  <key>StandardOutPath</key>
+  <string>$LOG_DIR/daily-restart.launchd.out.log</string>
+  <key>StandardErrorPath</key>
+  <string>$LOG_DIR/daily-restart.launchd.err.log</string>
+</dict>
+</plist>
+EOF
+    chmod 644 "$DAILY_RESTART_PLIST"
+    launchctl unload "$DAILY_RESTART_PLIST" 2>/dev/null || true
+    launchctl load "$DAILY_RESTART_PLIST"
+    echo "Installed daily restart LaunchAgent: $DAILY_RESTART_PLIST"
 fi
 
 # --- Install daemon (creates plist if missing) ---

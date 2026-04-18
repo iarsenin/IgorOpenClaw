@@ -7,8 +7,9 @@ export NVM_DIR="$HOME/.nvm"
 
 LOG="$HOME/.openclaw/logs/daily-restart.log"
 PLIST="$HOME/Library/LaunchAgents/ai.openclaw.gateway.plist"
+mkdir -p "$(dirname "$LOG")"
 
-echo "$(date '+%Y-%m-%d %H:%M:%S') [daily-restart] restarting gateway…" >> "$LOG"
+echo "$(date '+%Y-%m-%d %H:%M:%S') [daily-restart] restarting gateway..." >> "$LOG"
 
 launchctl unload "$PLIST" 2>> "$LOG" || true
 sleep 3

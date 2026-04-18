@@ -13,7 +13,7 @@ import os
 import shutil
 import subprocess
 import sys
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 issues = []
 
@@ -95,7 +95,9 @@ def _count_recent_log_events(log_path, needle, window):
                     ts = obj.get("time")
                     if not ts:
                         continue
-                    ev = datetime.fromisoformat(ts)
+                    ev = datetime.fromisoformat(ts.replace("Z", "+00:00"))
+                    if ev.tzinfo is None:
+                        ev = ev.replace(tzinfo=timezone.utc)
                     if ev >= cutoff:
                         recent += 1
                 except (json.JSONDecodeError, TypeError, ValueError):
