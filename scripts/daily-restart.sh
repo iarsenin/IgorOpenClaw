@@ -7,9 +7,14 @@ export NVM_DIR="$HOME/.nvm"
 
 LOG="$HOME/.openclaw/logs/daily-restart.log"
 PLIST="$HOME/Library/LaunchAgents/ai.openclaw.gateway.plist"
+RESET_SESSIONS="$HOME/.openclaw/scripts/reset-main-sessions.py"
 mkdir -p "$(dirname "$LOG")"
 
 echo "$(date '+%Y-%m-%d %H:%M:%S') [daily-restart] restarting gateway..." >> "$LOG"
+
+if [ -x "$RESET_SESSIONS" ]; then
+    python3 "$RESET_SESSIONS" >> "$LOG" 2>&1 || true
+fi
 
 launchctl unload "$PLIST" 2>> "$LOG" || true
 sleep 3

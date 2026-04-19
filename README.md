@@ -112,6 +112,7 @@ Configuration lives in `config/openclaw.json.template`. The auth token uses a `_
 Current repo default models:
 - Primary: `openai/gpt-5.4-mini`
 - Fallback: `google/gemini-2.5-pro`
+- DM session scope: `per-account-channel-peer` (isolates WhatsApp DMs per sender/account)
 
 `setup.sh` also injects all API keys and environment variables from `.env` into the LaunchAgent plist so they are available to the gateway process and cron scripts. This is critical — running `openclaw doctor --fix` will reinstall the plist and wipe these injected variables. Always re-run `bash scripts/setup.sh` after `doctor --fix`.
 
@@ -142,7 +143,7 @@ Also ensure **disk space** is healthy and avoid putting `~/.openclaw/credentials
 
 ### Other
 
-- **`No pages available in the connected browser`** — managed Chrome has no tab yet; use `browser navigate` first (see `workspace/TOOLS.md`). The post-restart cron warms the browser with `about:blank` after the daily 4 AM gateway restart.
+- **`No pages available in the connected browser`** — managed Chrome has no tab yet; use `browser navigate` first (see `workspace/TOOLS.md`). The post-restart cron now leaves one shared `about:blank` tab open after the daily 4 AM gateway restart so later browser actions have a page to attach to.
 - **Cron updates not taking effect** — newer OpenClaw releases may keep a writable live copy at `~/.openclaw/cron/jobs.json` (not a symlink). Re-run `bash scripts/setup.sh` to re-seed from repo config, then verify with `openclaw cron list` or apply direct runtime edits with `openclaw cron edit`.
 
 ### API keys suddenly "not set" in cron reports
@@ -201,12 +202,11 @@ This usually means stale live sessions are pinned to an old model while defaults
 Fast recovery:
 
 ```bash
-# 1. Wipe ALL session state — this is the nuclear fix
-rm -f ~/.openclaw/agents/main/sessions/sessions.json
-rm -f ~/.openclaw/agents/main/sessions/*.jsonl
+# 1. Reset main-agent session state — archives old sessions and starts fresh
+python3 scripts/reset-main-sessions.py
 
 # 2. Apply model object atomically (avoid partial primary/fallback updates)
-openclaw config set agents.defaults.model '{"primary":"google/gemini-2.5-pro","fallbacks":["openai/gpt-5.4-mini"]}' --strict-json
+openclaw config set agents.defaults.model '{"primary":"openai/gpt-5.4-mini","fallbacks":["google/gemini-2.5-pro"]}' --strict-json
 
 # 3. Restart and verify
 openclaw gateway restart

@@ -149,6 +149,8 @@ OPENAI_API_KEY=sk-your-actual-key-here
 # Admin key for daily spend reporting (Usage+Billing Read only)
 # Create at: platform.openai.com/settings/organization/api-keys
 OPENAI_ADMIN_KEY=sk-admin-your-actual-admin-key
+# Use ONE Google-family key alias in the runtime if possible.
+# If both are set, setup prefers GOOGLE_API_KEY for the LaunchAgent.
 GEMINI_API_KEY=AIza-your-actual-key-here
 OPENCLAW_AUTH_TOKEN=<generate one — see step 3.4>
 GMAIL_USER=your_email@gmail.com
@@ -234,6 +236,7 @@ The IgorOpenClaw template includes:
 
 - **Identity**: Agent named "Clawd"
 - **Models**: OpenAI `gpt-5.4-mini` as primary, Google `gemini-2.5-pro` as fallback
+- **DM session isolation**: `session.dmScope = "per-account-channel-peer"` so WhatsApp conversations stay separate per sender/account
 - **Gateway**: Bound to localhost (mode: local), port 18789, token auth enabled
 - **WhatsApp**: Enabled with `allowFrom` phone number restriction, groups disabled
 - **Logging**: Logs written to `/tmp/openclaw/openclaw-YYYY-MM-DD.log` (rotated daily)

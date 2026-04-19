@@ -24,6 +24,8 @@ _WHATSAPP_499_RECENT_WINDOW = timedelta(hours=2)
 _WHATSAPP_499_RECENT_THRESHOLD = 12
 _BROWSER_NO_PAGES_WINDOW = timedelta(hours=3)
 _BROWSER_NO_PAGES_THRESHOLD = 3
+_RECENT_ERROR_WINDOW = timedelta(hours=1)
+_RECENT_ERROR_THRESHOLD = 10
 
 
 def check_gateway():
@@ -57,31 +59,73 @@ def check_recent_errors():
         return
 
     try:
-        r = subprocess.run(
-            ["grep", '"logLevelName":"ERROR"', log_path],
-            capture_output=True, text=True, timeout=15)
-        lines = r.stdout.strip().split("\n") if r.stdout.strip() else []
-        real_errors = [
-            l for l in lines
-            if "connection closed" not in l
-            and "Retry " not in l
-            and "punycode" not in l
-            and "DeprecationWarning" not in l
-            and "gateway closed" not in l
-            and "No pages available" not in l
-            and "status 499" not in l
-            and "WhatsApp Web connection closed" not in l
-        ]
-        if len(real_errors) > 10:
-            issues.append(f"High error count in today's log: {len(real_errors)} non-transient ERROR entries")
+        now = datetime.now().astimezone()
+        rolling_cutoff = now - _RECENT_ERROR_WINDOW
+        session_start = _latest_gateway_start_time(log_path)
+        cutoff = rolling_cutoff
+        if session_start is not None and session_start > cutoff:
+            cutoff = session_start
+        total_today = 0
+        recent = 0
+
+        with open(log_path, "r", encoding="utf-8", errors="replace") as f:
+            for line in f:
+                if '"logLevelName":"ERROR"' not in line:
+                    continue
+                if (
+                    "connection closed" in line
+                    or "Retry " in line
+                    or "punycode" in line
+                    or "DeprecationWarning" in line
+                    or "gateway closed" in line
+                    or "No pages available" in line
+                    or "status 499" in line
+                    or "WhatsApp Web connection closed" in line
+                    or "QR refs attempts ended" in line
+                    or "Channel login failed" in line
+                ):
+                    continue
+
+                total_today += 1
+                try:
+                    obj = json.loads(line)
+                    ts = obj.get("time")
+                    if not ts:
+                        continue
+                    ev = datetime.fromisoformat(ts.replace("Z", "+00:00"))
+                    if ev.tzinfo is None:
+                        ev = ev.replace(tzinfo=timezone.utc)
+                    if ev >= cutoff:
+                        recent += 1
+                except (json.JSONDecodeError, TypeError, ValueError):
+                    continue
+
+        if recent > _RECENT_ERROR_THRESHOLD:
+            if cutoff == rolling_cutoff:
+                scope = f"in the last {int(_RECENT_ERROR_WINDOW.total_seconds() // 3600)}h"
+            else:
+                scope = "since the latest gateway restart"
+            issues.append(
+                f"High error count {scope}: "
+                f"{recent} non-transient ERROR entries ({total_today} total today)."
+            )
     except Exception:
         pass
 
 
-def _count_recent_log_events(log_path, needle, window):
-    """Count occurrences of `needle` in log JSON lines within rolling window."""
+def _count_recent_log_events(log_path, needle, window, latest_start_cutoff=False):
+    """Count occurrences of `needle` in log JSON lines within rolling window.
+
+    When `latest_start_cutoff` is true, ignore events that predate the most
+    recent gateway listener startup so restart churn does not look like an
+    active loop in the current session.
+    """
     now = datetime.now().astimezone()
     cutoff = now - window
+    if latest_start_cutoff:
+        session_start = _latest_gateway_start_time(log_path)
+        if session_start is not None and session_start > cutoff:
+            cutoff = session_start
     recent = 0
     total = 0
     try:
@@ -107,6 +151,31 @@ def _count_recent_log_events(log_path, needle, window):
     return recent, total
 
 
+def _latest_gateway_start_time(log_path):
+    """Best-effort timestamp of the latest gateway listener startup in today's log."""
+    latest = None
+    try:
+        with open(log_path, "r", encoding="utf-8", errors="replace") as f:
+            for line in f:
+                if '"listening on ws://' not in line:
+                    continue
+                try:
+                    obj = json.loads(line)
+                    ts = obj.get("time")
+                    if not ts:
+                        continue
+                    ev = datetime.fromisoformat(ts.replace("Z", "+00:00"))
+                    if ev.tzinfo is None:
+                        ev = ev.replace(tzinfo=timezone.utc)
+                    if latest is None or ev > latest:
+                        latest = ev
+                except (json.JSONDecodeError, TypeError, ValueError):
+                    continue
+    except OSError:
+        return None
+    return latest
+
+
 def check_whatsapp_creds_corruption():
     """Alert only if creds restores cluster in the recent window (avoids all-day stale totals)."""
     today = datetime.now().strftime("%Y-%m-%d")
@@ -114,7 +183,12 @@ def check_whatsapp_creds_corruption():
     if not os.path.exists(log_path):
         return
     needle = "restored corrupted WhatsApp creds"
-    recent, total = _count_recent_log_events(log_path, needle, _WHATSAPP_CREDS_RECENT_WINDOW)
+    recent, total = _count_recent_log_events(
+        log_path,
+        needle,
+        _WHATSAPP_CREDS_RECENT_WINDOW,
+        latest_start_cutoff=True,
+    )
 
     if recent >= _WHATSAPP_CREDS_RECENT_THRESHOLD:
         issues.append(

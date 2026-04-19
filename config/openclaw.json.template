@@ -11,10 +11,10 @@
   agents: {
     defaults: {
       model: {
-        // Gemini is primary while OpenAI account is out of quota.
-        // Restore to openai/gpt-5.4-mini once credits are added.
-        primary: "google/gemini-2.5-pro",
-        fallbacks: ["openai/gpt-5.4-mini"],
+        // OpenAI is the primary provider for the main agent.
+        // Keep Gemini as a fallback for transient OpenAI issues.
+        primary: "openai/gpt-5.4-mini",
+        fallbacks: ["google/gemini-2.5-pro"],
       },
       workspace: "~/.openclaw/workspace",
     },
@@ -54,6 +54,12 @@
     nativeSkills: "auto",
     restart: true,
     ownerDisplay: "raw",
+  },
+
+  session: {
+    // Isolate direct-message sessions per sender/account so one DM thread
+    // cannot bloat or leak into another.
+    dmScope: "per-account-channel-peer",
   },
 
   channels: {

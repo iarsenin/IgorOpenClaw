@@ -94,9 +94,9 @@ ALWAYS draft first, show user, send only after approval.
 
 ## Browser Rules
 
-**Always `browser close` when done.** Use `ref` from `browser snapshot`, NOT CSS selectors.
+**Always `browser close` when done.** Use `ref` from `browser snapshot`, NOT CSS selectors. Exception: after the daily restart, leave the intentional shared `about:blank` warm-up tab open.
 
-**Cold start:** If you see `No pages available in the connected browser`, the managed Chrome has no tab yet. Run `browser navigate` to your target URL (or `about:blank` first) before `browser snapshot` — never snapshot first on a fresh session.
+**Cold start:** If you see `No pages available in the connected browser`, the managed Chrome has no tab yet. Run `browser navigate` to your target URL (or `about:blank` first) before `browser snapshot` — never snapshot first on a fresh session. The post-restart warm-up intentionally leaves one blank tab open so later sessions can attach cleanly.
 
 1. `browser navigate` to page
 2. `browser snapshot` to get refs (e.g. `e123`)
@@ -104,6 +104,8 @@ ALWAYS draft first, show user, send only after approval.
 4. `browser close` when done (mandatory — success, failure, or timeout)
 
 Cron jobs using browser must end with `browser close`. **chrono24.com** blocks non-browser requests.
+
+If a site shows a human-verification / anti-bot interstitial such as Chrono24's "Verify you are human", do not try to automate or click through it. Leave the managed browser open for Igor to solve manually, report that the task is blocked on verification, and resume normal browser cleanup only after the real page is accessible again.
 
 ## Apple Contacts — via contacts.py
 

@@ -13,7 +13,7 @@
       "wakeMode": "now",
       "payload": {
         "kind": "agentTurn",
-        "message": "Gateway just restarted. Read MEMORY.md Active Tasks. Resume active ones, skip paused. Respect quiet hours (before 7 AM, queue for morning briefing). Warm the browser tool once: `browser navigate` to `about:blank` (creates a tab if none), then `browser close` — avoids later cron jobs hitting \"No pages available\" on a cold browser.",
+        "message": "Gateway just restarted. Read MEMORY.md Active Tasks. Resume active ones, skip paused. Respect quiet hours (before 7 AM, queue for morning briefing). Warm the browser tool once: `browser navigate` to `about:blank` (creates a tab if none) and leave that blank tab open as the shared warm browser tab. Do not run `browser close` during this warm-up.",
         "timeoutSeconds": 300
       }
     },
@@ -61,7 +61,7 @@
       "wakeMode": "now",
       "payload": {
         "kind": "agentTurn",
-        "message": "Chrono24 monitor.\n1. Read MEMORY.md. If no active Chrono24 task, STOP immediately.\n2. Run `browser close` first to clear stale state (ignore errors).\n3. Use `browser navigate` (NOT web_fetch — Chrono24 blocks it) to check the listing URL from MEMORY context. If the browser command fails, wait 10 seconds and retry ONCE.\n4. Compare to last-chrono-baseline in MEMORY.\n5. Update MEMORY: last-chrono-check + last-chrono-baseline.\n6. Run `browser close`.\n\nOnly send a WhatsApp to +19179752041 (Igor) if: listing went live, buyer message/offer, or material status change. If unchanged or if browser failed after retry, STOP — do not send any message at all.\n\nQuiet hours 11 PM–7 AM: defer to morning briefing.",
+        "message": "Chrono24 monitor.\n1. Read MEMORY.md. If no active Chrono24 task, STOP immediately.\n2. Run `browser close` first to clear stale state (ignore errors).\n3. Use `browser navigate` (NOT web_fetch — Chrono24 blocks it) to check the listing URL from MEMORY context. If the browser command fails, wait 10 seconds and retry ONCE.\n4. If Chrono24 shows a human-verification / anti-bot interstitial such as \"Verify you are human\", do NOT try to automate or click through it. Leave the managed browser open on that page, update MEMORY with the interstitial state, and send ONE concise WhatsApp asking Igor to complete the verification manually in the managed OpenClaw browser. Then STOP without closing the browser.\n5. If the listing is readable, compare to last-chrono-baseline in MEMORY.\n6. Update MEMORY: last-chrono-check + last-chrono-baseline.\n7. Run `browser close` after a readable check.\n\nOnly send a WhatsApp to +19179752041 (Igor) if: listing went live, buyer message/offer, material status change, or manual verification is required. If unchanged or if browser failed after retry, STOP — do not send any message at all.\n\nQuiet hours 11 PM–7 AM: defer non-urgent status changes to morning briefing, but manual verification needed can still be noted once if it blocks the task.",
         "timeoutSeconds": 600
       }
     },

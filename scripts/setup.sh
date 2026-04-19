@@ -119,12 +119,14 @@ if [ -f "$REPO_DIR/config/cron/jobs.json" ]; then
     echo "Linked: config/cron/jobs.json -> $CRON_DIR/jobs.json"
 fi
 
-# --- Copy scripts locally (Google Drive files have com.apple.provenance which blocks launchd) ---
-if [ -f "$REPO_DIR/scripts/daily-restart.sh" ]; then
-    cp "$REPO_DIR/scripts/daily-restart.sh" "$SCRIPTS_DIR/daily-restart.sh"
-    chmod +x "$SCRIPTS_DIR/daily-restart.sh"
-    echo "Copied: scripts/daily-restart.sh -> $SCRIPTS_DIR/"
-fi
+# --- Copy runtime scripts locally (Google Drive files have com.apple.provenance which blocks launchd) ---
+for SCRIPT in daily-restart.sh reset-main-sessions.py; do
+    if [ -f "$REPO_DIR/scripts/$SCRIPT" ]; then
+        cp "$REPO_DIR/scripts/$SCRIPT" "$SCRIPTS_DIR/$SCRIPT"
+        chmod +x "$SCRIPTS_DIR/$SCRIPT"
+        echo "Copied: scripts/$SCRIPT -> $SCRIPTS_DIR/"
+    fi
+done
 
 # --- Install daily restart LaunchAgent ---
 if [ -x "$SCRIPTS_DIR/daily-restart.sh" ]; then
@@ -192,10 +194,42 @@ if [ -f "$PLIST" ] && [ -f "$REPO_DIR/.env" ]; then
     echo "Injecting API keys into LaunchAgent plist..."
     /usr/libexec/PlistBuddy -c "Delete :EnvironmentVariables:OPENCLAW_REPO" "$PLIST" 2>/dev/null || true
     /usr/libexec/PlistBuddy -c "Add :EnvironmentVariables:OPENCLAW_REPO string '$REPO_DIR'" "$PLIST"
-    for VAR in OPENAI_API_KEY OPENAI_ADMIN_KEY GOOGLE_API_KEY GEMINI_API_KEY GMAIL_USER GMAIL_APP_PASSWORD YAHOO_USER YAHOO_APP_PASSWORD ALPHA_VANTAGE_KEY HUGGING_FACE_TOKEN VAPI_API_KEY VAPI_ASSISTANT_ID VAPI_PHONE_NUMBER_ID VAPI_PHONE_NUMBER GOG_KEYRING_PASSWORD TZ; do
+
+    MANAGED_ENV_VARS=(
+        OPENAI_API_KEY
+        OPENAI_ADMIN_KEY
+        GOOGLE_API_KEY
+        GEMINI_API_KEY
+        GMAIL_USER
+        GMAIL_APP_PASSWORD
+        YAHOO_USER
+        YAHOO_APP_PASSWORD
+        ALPHA_VANTAGE_KEY
+        HUGGING_FACE_TOKEN
+        VAPI_API_KEY
+        VAPI_ASSISTANT_ID
+        VAPI_PHONE_NUMBER_ID
+        VAPI_PHONE_NUMBER
+        GOG_KEYRING_PASSWORD
+        TZ
+    )
+
+    # Clear previously-managed vars first so removed keys do not linger forever
+    # in the LaunchAgent plist and keep producing stale runtime warnings.
+    for VAR in "${MANAGED_ENV_VARS[@]}"; do
+        /usr/libexec/PlistBuddy -c "Delete :EnvironmentVariables:$VAR" "$PLIST" 2>/dev/null || true
+    done
+
+    if [ -n "${GOOGLE_API_KEY:-}" ] && [ -n "${GEMINI_API_KEY:-}" ]; then
+        echo "NOTICE: Both GOOGLE_API_KEY and GEMINI_API_KEY are set; injecting GOOGLE_API_KEY only to avoid duplicate-provider warnings."
+    fi
+
+    for VAR in "${MANAGED_ENV_VARS[@]}"; do
+        if [ "$VAR" = "GEMINI_API_KEY" ] && [ -n "${GOOGLE_API_KEY:-}" ]; then
+            continue
+        fi
         VAL="${!VAR:-}"
         if [ -n "$VAL" ]; then
-            /usr/libexec/PlistBuddy -c "Delete :EnvironmentVariables:$VAR" "$PLIST" 2>/dev/null || true
             /usr/libexec/PlistBuddy -c "Add :EnvironmentVariables:$VAR string $VAL" "$PLIST"
         fi
     done
