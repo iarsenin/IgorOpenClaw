@@ -28,13 +28,15 @@ if [ -f "$DAILY_RESTART_PLIST" ]; then
     echo "Removed LaunchAgent: $DAILY_RESTART_PLIST"
 fi
 
-# --- Remove symlinks ---
-for LINK in "$OPENCLAW_DIR/workspace" "$OPENCLAW_DIR/cron/jobs.json"; do
-    if [ -L "$LINK" ]; then
-        rm "$LINK"
-        echo "Removed symlink: $LINK"
-    fi
-done
+# --- Remove workspace symlink / generated cron store ---
+if [ -L "$OPENCLAW_DIR/workspace" ]; then
+    rm "$OPENCLAW_DIR/workspace"
+    echo "Removed symlink: $OPENCLAW_DIR/workspace"
+fi
+if [ -e "$OPENCLAW_DIR/cron/jobs.json" ]; then
+    rm -f "$OPENCLAW_DIR/cron/jobs.json"
+    echo "Removed live cron store: $OPENCLAW_DIR/cron/jobs.json"
+fi
 
 # --- Remove generated config (created by setup.sh cp, not a symlink) ---
 if [ -f "$OPENCLAW_DIR/openclaw.json" ] && [ ! -L "$OPENCLAW_DIR/openclaw.json" ]; then

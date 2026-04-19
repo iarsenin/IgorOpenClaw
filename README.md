@@ -1,7 +1,7 @@
 # IgorOpenClaw
 
-> **STATUS: SHUT DOWN (2026-04-06).** Gateway stopped, LaunchAgents removed.
-> Repo preserved for future reinstall. See [Restoring Clawd](#restoring-clawd) below.
+> **STATUS: ACTIVE (restored 2026-04-18).** Gateway, LaunchAgents, cron, and the local `/transcribe` plugin are back in service.
+> Keep `config/`, `workspace/`, and `scripts/` as the source of truth, then re-run `bash scripts/setup.sh` after runtime repairs or upgrades.
 
 Version-controlled configuration and workspace for an always-on [OpenClaw](https://github.com/openclaw/openclaw) autonomous AI agent running on a Mac Mini M2.
 
@@ -13,6 +13,7 @@ This repository is the single source of truth for an OpenClaw agent that:
 - Accepts instructions via WhatsApp and executes tasks autonomously
 - Uses **OpenAI** (primary) and **Google Gemini** (fallback) as LLM providers
 - Automates browser interactions, email, iMessage/SMS, phone calls (Vapi AI), file management, and coding workflows
+- Handles `/transcribe <URL>` requests with a deterministic OpenClaw plugin command backed by `scripts/transcribe-url.py`, canonical feed/provider transcript discovery, speaker-label cleanup, fallback transcription, a concise 3-5 bullet WhatsApp summary, and email delivery when a full transcript exists
 - Integrates with Cursor IDE for autonomous coding and research
 
 The agent acts on its owner's behalf — browsing the web, managing email, running shell commands, and orchestrating multi-step workflows — while requiring explicit approval before irreversible actions. When it needs a decision or missing info from the owner, it **prefers yes/no or multiple-choice questions** when practical (see `workspace/AGENTS.md`).
@@ -67,10 +68,10 @@ IgorOpenClaw/
 │   ├── TOOLS.md           ← Available tools and environment notes
 │   ├── MEMORY.template.md ← Tracked template for local runtime memory file
 │   ├── MEMORY.md          ← Local-only runtime state (git-ignored)
-│   └── HEARTBEAT.md       ← Proactive behavior guidelines (references cron/jobs.json)
+│   └── HEARTBEAT.md       ← Proactive behavior guidelines (references repo cron template)
 └── scripts/
-    ├── setup.sh           ← Bootstrap: copy config from template, symlink workspace+cron, daemon install
-    ├── uninstall.sh       ← Teardown (remove symlinks, stop daemon, remove LaunchAgent)
+    ├── setup.sh           ← Bootstrap: copy config, symlink workspace, seed live cron store, daemon install
+    ├── uninstall.sh       ← Teardown (remove workspace link/live cron store, stop daemon, remove LaunchAgent)
     ├── contacts.py        ← Apple Contacts lookup (searches all synced sources)
     ├── email-search.py    ← Email search wrapper (standard flags, searches both Gmail+Yahoo)
     ├── imessage.py        ← iMessage/SMS read & send helper (chat.db + AppleScript)
@@ -78,8 +79,41 @@ IgorOpenClaw/
     ├── vapi-call.py       ← Outbound/inbound phone calls via Vapi AI voice agent
     ├── api-spend-check.py ← Daily API spend report (OpenAI, Vapi, Cursor status)
     ├── system-health-check.py ← Gateway/disk/error health check (silent when healthy)
+    ├── transcribe-url.py  ← URL transcript + summary + email pipeline
     └── daily-restart.sh   ← Daily gateway restart via launchd (4 AM ET)
+
+openclaw-plugins/
+└── transcribe-command/
+    ├── package.json       ← Declares the OpenClaw extension entrypoint
+    ├── openclaw.plugin.json ← Optional metadata for plugin inspection/listing
+    └── index.js           ← Deterministic `/transcribe` OpenClaw command plugin
 ```
+
+## Slash Commands: Plugin vs Skill
+
+For this repo, a live slash command such as `/transcribe <URL>` should be implemented as an
+**OpenClaw plugin**, not as a skill-only workflow.
+
+Why:
+- **Skills** are prompt/runtime guidance for the agent after a message has already reached model dispatch.
+- A skill can help the agent reason about a transcript request, but it does **not** guarantee that a WhatsApp slash command will be intercepted deterministically.
+- For hard command behavior, the gateway needs a **plugin hook** that runs before model dispatch.
+
+What works for WhatsApp:
+- Put the command in `openclaw-plugins/<plugin-name>/`
+- Include `package.json` with an `openclaw.extensions` entry pointing to `index.js`
+- Keep `openclaw.plugin.json` for plugin metadata / inspection
+- In `index.js`, export a plugin and use `api.on("before_dispatch", ...)`
+- Match the wrapped inbound body format used by WhatsApp, not just a bare `/command ...`
+- Return `{ handled: true, text: "..." }` to stop model dispatch and send the final reply directly
+- Optionally also call `api.registerCommand(...)` for non-WhatsApp surfaces, but do **not** rely on `registerCommand()` alone for the WhatsApp path
+
+What to avoid:
+- Do **not** assume that adding a skill is enough for a live slash command
+- Do **not** assume `api.registerCommand()` alone will catch WhatsApp `/...` messages
+- Do **not** let a user-facing slash command depend on the model deciding whether to run shell steps
+
+The `/transcribe` implementation in this repo is the reference pattern.
 
 ## Quick Start
 
@@ -93,10 +127,10 @@ cp .env.example .env
 chmod 600 .env
 # Edit .env with your real API keys
 
-# 3. Install OpenClaw (requires Node.js 22+)
+# 3. Install OpenClaw (requires Node.js 22+, Node 24 via Homebrew recommended)
 npm install -g openclaw@latest
 
-# 4. Run the setup script (generates ~/.openclaw/openclaw.json, symlinks workspace + cron, installs daemon)
+# 4. Run the setup script (generates ~/.openclaw/openclaw.json, symlinks workspace, seeds live cron store, installs daemon)
 bash scripts/setup.sh
 
 # 5. Verify
@@ -126,6 +160,36 @@ Agent workspace files (`workspace/*.md`) take effect on the next agent turn with
 
 `workspace/MEMORY.md` is intentionally local-only (git-ignored) because it contains fast-changing operational state and personal context. The repository tracks `workspace/MEMORY.template.md`; `scripts/setup.sh` initializes `workspace/MEMORY.md` from that template when missing.
 
+## Upgrading OpenClaw
+
+For this repo, the safest upgrade path is:
+
+```bash
+brew install node@24
+export PATH="/opt/homebrew/opt/node@24/bin:/opt/homebrew/bin:$PATH"
+
+openclaw update || npm install -g openclaw@latest
+bash scripts/setup.sh
+```
+
+Why `setup.sh` matters after an upgrade:
+
+- `openclaw gateway install` and `openclaw doctor --fix` can rewrite the LaunchAgent plist and wipe injected env vars like `OPENCLAW_REPO`, API keys, and keyring passwords
+- OpenClaw 2026.4+ uses a writable live cron store at `~/.openclaw/cron/jobs.json`, so repo cron changes need to be re-seeded into that live file
+- This repo depends on a linked local plugin at `openclaw-plugins/transcribe-command/`, and `setup.sh` re-installs it after config/gateway changes
+- `setup.sh` also restores the daily restart LaunchAgent and preserves the current live model object when re-generating `~/.openclaw/openclaw.json`
+
+Verify the upgrade:
+
+```bash
+openclaw --version
+openclaw plugins inspect transcribe-command
+openclaw cron list
+openclaw channels list
+```
+
+If `openclaw gateway status` looks flaky right after the upgrade, trust the process/log checks above first, then retry the status command after the restart settles.
+
 ## Troubleshooting
 
 ### WhatsApp creds restore loop (health check ALERT)
@@ -144,7 +208,9 @@ Also ensure **disk space** is healthy and avoid putting `~/.openclaw/credentials
 ### Other
 
 - **`No pages available in the connected browser`** — managed Chrome has no tab yet; use `browser navigate` first (see `workspace/TOOLS.md`). The post-restart cron now leaves one shared `about:blank` tab open after the daily 4 AM gateway restart so later browser actions have a page to attach to.
-- **Cron updates not taking effect** — newer OpenClaw releases may keep a writable live copy at `~/.openclaw/cron/jobs.json` (not a symlink). Re-run `bash scripts/setup.sh` to re-seed from repo config, then verify with `openclaw cron list` or apply direct runtime edits with `openclaw cron edit`.
+- **Cron updates not taking effect** — OpenClaw 2026.4+ keeps a writable live cron store at `~/.openclaw/cron/jobs.json` with runtime fields like `createdAtMs`, `updatedAtMs`, and job state. Re-run `bash scripts/setup.sh` to re-seed that live store from `config/cron/jobs.json`, then verify with `openclaw cron list` or apply direct runtime edits with `openclaw cron edit`.
+- **`/transcribe` underperforms on media URLs** — install `yt-dlp` and `ffmpeg` locally. The helper can work without them in simpler cases, but YouTube/extractor/media-conversion fallbacks are much stronger with both installed.
+- **`/transcribe` fails on missing Python modules** — re-run `bash scripts/setup.sh`; it now installs the required user-scoped Python helpers (`requests`, `beautifulsoup4`) for the Homebrew `python3` runtime.
 
 ### API keys suddenly "not set" in cron reports
 

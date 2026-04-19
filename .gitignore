@@ -31,3 +31,5 @@ logs/
 .vapi-pending-outbound
 workspace/MEMORY.md
 workspace/memory/
+workspace/transcripts/
+workspace/auth-profiles.json

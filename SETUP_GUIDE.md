@@ -58,20 +58,20 @@ brew --version
 
 On Apple Silicon, Homebrew installs to `/opt/homebrew`. If you just installed it, follow the instructions it prints to add it to your PATH.
 
-### 1.3 Install Node.js 22+
+### 1.3 Install Node.js 24 (recommended)
 
 OpenClaw requires Node.js 22 or later (Node 24 recommended).
 
 ```bash
-# Install Node.js 22
-brew install node@22
+# Install Node.js 24
+brew install node@24
 
 # Add to PATH (Apple Silicon Homebrew path)
-echo 'export PATH="/opt/homebrew/opt/node@22/bin:$PATH"' >> ~/.zshrc
+echo 'export PATH="/opt/homebrew/opt/node@24/bin:$PATH"' >> ~/.zshrc
 source ~/.zshrc
 
 # Verify
-node -v   # Should show v22.x.x or higher
+node -v   # Should show v24.x.x or higher
 npm -v    # Should show 10.x.x or higher
 ```
 
@@ -81,6 +81,61 @@ npm -v    # Should show 10.x.x or higher
 git --version
 # If not installed, macOS will prompt you to install Xcode Command Line Tools
 ```
+
+### 1.5 Install media helpers for `/transcribe`
+
+These are strongly recommended for the transcript workflow:
+
+```bash
+brew install yt-dlp ffmpeg
+python3 -m pip install --user --break-system-packages requests beautifulsoup4
+```
+
+- `yt-dlp` helps retrieve subtitles/audio from YouTube and many embedded players
+- `ffmpeg` converts awkward source formats into transcription-friendly audio
+- `requests` and `beautifulsoup4` power the transcript/page resolution helper
+
+### 1.6 Install the deterministic `/transcribe` command
+
+`bash scripts/setup.sh` links the repo-local OpenClaw plugin at
+`openclaw-plugins/transcribe-command/`.
+
+That plugin owns the live `/transcribe <URL>` slash command and runs
+`scripts/transcribe-url.py` directly, so the command does not depend on the chat
+model deciding to execute shell steps.
+
+### 1.7 Important: slash commands should be plugins, not skills
+
+If you add more live `/...` commands to this repo, follow the `/transcribe`
+pattern:
+
+- Use a repo-local **OpenClaw plugin** under `openclaw-plugins/<name>/`
+- Keep a `package.json` with:
+
+```json
+{
+  "name": "your-plugin-name",
+  "type": "module",
+  "openclaw": { "extensions": ["./index.js"] }
+}
+```
+
+- Keep `openclaw.plugin.json` for plugin metadata
+- Implement the command in `index.js`
+- Install it with `openclaw plugins install --link <path>` or let `scripts/setup.sh` do it
+- Restart the gateway after install/update
+
+Why not a skill?
+- Skills are guidance for agent/model behavior **after** dispatch
+- WhatsApp slash commands need deterministic interception **before** model dispatch
+- A skill can document the workflow, but it is not the right primitive for a live command contract
+
+Important implementation detail:
+- For WhatsApp, use `api.on("before_dispatch", ...)` and return `{ handled: true, text: ... }`
+- `api.registerCommand()` is fine as a secondary surface, but it was **not** enough by itself for the live WhatsApp `/transcribe` path in this repo
+- WhatsApp messages arrive wrapped, so your matcher should handle bodies like:
+  - `[WhatsApp ...]: /command ...`
+  not just a plain `/command ...`
 
 ---
 
@@ -102,7 +157,43 @@ Verify the installation:
 openclaw --version
 ```
 
-You should see something like `2026.3.x`.
+You should see something like `2026.4.x` or later.
+
+---
+
+### 2.1 Upgrade OpenClaw safely later
+
+When upgrading an existing install, use this sequence:
+
+```bash
+# 1. Make sure the preferred runtime is first on PATH
+export PATH="/opt/homebrew/opt/node@24/bin:/opt/homebrew/bin:$PATH"
+
+# 2. Upgrade OpenClaw itself
+openclaw update || npm install -g openclaw@latest
+
+# 3. Re-apply this repo's runtime wiring
+bash scripts/setup.sh
+```
+
+Why the final step matters in this repo:
+
+- `openclaw gateway install` and `openclaw doctor --fix` can rewrite the LaunchAgent plist
+- that rewrite can wipe injected env vars like `OPENCLAW_REPO`, `OPENAI_API_KEY`, `GOG_KEYRING_PASSWORD`, and other cron/runtime secrets
+- this repo keeps a linked local plugin at `openclaw-plugins/transcribe-command/`, and `setup.sh` re-installs it after gateway/config updates
+- OpenClaw 2026.4+ keeps runtime cron state in `~/.openclaw/cron/jobs.json`, so `setup.sh` re-seeds that live store from `config/cron/jobs.json`
+
+Verify after the upgrade:
+
+```bash
+openclaw --version
+openclaw plugins inspect transcribe-command
+openclaw cron list
+openclaw channels list
+openclaw agent --agent main --message "Reply with OK only." --json
+```
+
+If you ran `openclaw doctor --fix`, always run `bash scripts/setup.sh` afterward before trusting cron jobs, WhatsApp, or repo script paths.
 
 ---
 
@@ -205,7 +296,7 @@ This script:
 - Creates `~/.openclaw/` directory
 - **Copies** `config/openclaw.json.template` → `~/.openclaw/openclaw.json` (injects `OPENCLAW_AUTH_TOKEN` from `.env` — **not** a symlink; git-ignored live config)
 - Symlinks `workspace/` → `~/.openclaw/workspace/`
-- Symlinks `config/cron/jobs.json` → `~/.openclaw/cron/jobs.json`
+- Seeds a writable live cron store at `~/.openclaw/cron/jobs.json` from `config/cron/jobs.json`
 - Loads your `.env` variables
 - Installs the launchd daemon (runs OpenClaw on startup)
 

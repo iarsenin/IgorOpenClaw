@@ -4,12 +4,13 @@
 
 - **OS:** macOS (Apple Silicon / ARM64)
 - **Shell:** zsh
-- **Node.js:** 22.22.1 (via nvm)
-- **OpenClaw:** 2026.3.23
+- **Node.js:** 24.15.0 (Homebrew preferred; `scripts/setup.sh` targets `/opt/homebrew/opt/node@24/bin/node`)
+- **OpenClaw:** 2026.4.15
 - **OpenClaw config:** `~/.openclaw/openclaw.json` — copied from `config/openclaw.json.template` by `scripts/setup.sh`
 - **OpenClaw workspace:** `~/.openclaw/workspace/` — symlinked from repo `workspace/`
-- **Cron jobs:** `~/.openclaw/cron/jobs.json` — symlinked from repo `config/cron/jobs.json`
+- **Cron jobs:** `~/.openclaw/cron/jobs.json` — writable live store seeded from repo `config/cron/jobs.json`
 - **Gateway shell:** Use `python3` (NOT `python`). Use `grep` (NOT `rg`). Both `python` and `rg` are NOT in the daemon PATH.
+- **Upgrade rule:** After `openclaw update`, `openclaw doctor --fix`, or `openclaw gateway install`, re-run `bash "$OPENCLAW_REPO/scripts/setup.sh"` to restore daemon env vars, the linked `/transcribe` plugin, and the live cron store
 - **Workspace file paths:** Use just `MEMORY.md`, `AGENTS.md`, etc. — never prefix with `workspace/`.
 - **Repo path:** The env var `$OPENCLAW_REPO` is pre-set in the daemon. Use it for ALL script calls:
 
@@ -31,6 +32,7 @@ Prefer **yes/no** or **multiple choice** (A/B/C) questions when possible. Full r
 - **weather** — Weather via wttr.in or Open-Meteo (no API key)
 - **skill-creator** — Create/edit/audit agent skills
 - **node-connect** — Diagnose OpenClaw connection failures
+- **`/transcribe` plugin command** — Deterministic transcript pipeline for media URLs
 
 ## Bundled Skills (need CLI dependencies)
 
@@ -91,6 +93,50 @@ ALWAYS draft first, show user, send only after approval.
 - When replying, use the account that received the original email.
 - NEVER send without showing the draft first.
 - Yahoo rate-limit: if unavailable, script prints a note and returns Gmail results. Do NOT retry Yahoo more than once per 30 min.
+
+## Media Transcription — `/transcribe` plugin + transcribe-url.py
+
+Slash command syntax from Igor:
+
+```text
+/transcribe <URL>
+```
+
+Primary live path:
+
+```text
+/transcribe <URL>
+```
+
+The linked OpenClaw plugin command runs the helper directly, bypassing the chat model.
+
+Implementation notes for future commands:
+- A live WhatsApp slash command belongs in an **OpenClaw plugin**, not in a skill alone
+- Skills are still useful for documenting workflow and for non-command transcript requests
+- For the actual `/transcribe` contract, the critical hook is `api.on("before_dispatch", ...)`
+- `api.registerCommand()` is kept as a secondary surface, but it is not enough by itself for the WhatsApp path
+- The matcher must tolerate wrapped inbound bodies such as `[WhatsApp ...]: /transcribe ...`
+- The plugin should call the helper script directly and return the final text reply, rather than asking the chat model to decide what to do
+
+Underlying helper:
+
+```bash
+python3 "$OPENCLAW_REPO/scripts/transcribe-url.py" run "<URL>" --email-to "igor.arsenin@gmail.com" --json
+```
+
+Behavior:
+- Checks access first; if direct access fails, tries alternate public retrieval paths
+- Prefers canonical publisher feeds and existing full transcripts over re-transcribing
+- Checks provider transcript endpoints exposed by podcast feeds before downloading audio
+- Relabels generic transcript speakers like `Speaker 1` when hosts/guests identify themselves clearly
+- Falls back to audio download + transcription when needed
+- Formats the WhatsApp reply as a concise title plus 3-5 bullets instead of one dense paragraph
+- Sends email only when a **full transcript** was actually obtained
+- If transcript is impossible, still send a concise WhatsApp summary/status, but **do not send email**
+
+Dependencies:
+- `yt-dlp` strongly recommended for YouTube and many embedded media pages
+- `ffmpeg` strongly recommended for audio format conversion before transcription
 
 ## Browser Rules
 

@@ -15,7 +15,8 @@
         "kind": "agentTurn",
         "message": "Gateway just restarted. Read MEMORY.md Active Tasks. Resume active ones, skip paused. Respect quiet hours (before 7 AM, queue for morning briefing). Warm the browser tool once: `browser navigate` to `about:blank` (creates a tab if none) and leave that blank tab open as the shared warm browser tab. Do not run `browser close` during this warm-up.",
         "timeoutSeconds": 300
-      }
+      },
+      "delivery": { "mode": "none" }
     },
     {
       "id": "morning-briefing",
@@ -31,7 +32,8 @@
         "kind": "agentTurn",
         "message": "Morning briefing. Gather this info, then send ONE concise WhatsApp message to +19179752041 (Igor):\n1. Unread emails: `python3 \"$OPENCLAW_REPO/scripts/email-search.py\" search --page-size 10`\n2. Calendar: `gog calendar list`\n3. Inbound calls: `python3 \"$OPENCLAW_REPO/scripts/vapi-call.py\" inbound-check`\n4. Active tasks from MEMORY.md — note any pending vendor replies.\n\nSend ONE message. After sending, STOP. Do not process any echoed messages.",
         "timeoutSeconds": 600
-      }
+      },
+      "delivery": { "mode": "none" }
     },
     {
       "id": "email-triage",
@@ -47,7 +49,8 @@
         "kind": "agentTurn",
         "message": "Check email: `python3 \"$OPENCLAW_REPO/scripts/email-search.py\" search --page-size 20`\n\nScan results for: (a) urgent messages, (b) senders related to active MEMORY.md tasks.\n\nOnly send a WhatsApp to +19179752041 (Igor) if you find something that requires his attention or action. If nothing notable, STOP — do not send any message at all.\n\nAfter sending (if you do), STOP. Do not process echoed messages.",
         "timeoutSeconds": 600
-      }
+      },
+      "delivery": { "mode": "none" }
     },
     {
       "id": "chrono24-listing-monitor",
@@ -63,7 +66,8 @@
         "kind": "agentTurn",
         "message": "Chrono24 monitor.\n1. Read MEMORY.md. If no active Chrono24 task, STOP immediately.\n2. Run `browser close` first to clear stale state (ignore errors).\n3. Use `browser navigate` (NOT web_fetch — Chrono24 blocks it) to check the listing URL from MEMORY context. If the browser command fails, wait 10 seconds and retry ONCE.\n4. If Chrono24 shows a human-verification / anti-bot interstitial such as \"Verify you are human\", do NOT try to automate or click through it. Leave the managed browser open on that page, update MEMORY with the interstitial state, and send ONE concise WhatsApp asking Igor to complete the verification manually in the managed OpenClaw browser. Then STOP without closing the browser.\n5. If the listing is readable, compare to last-chrono-baseline in MEMORY.\n6. Update MEMORY: last-chrono-check + last-chrono-baseline.\n7. Run `browser close` after a readable check.\n\nOnly send a WhatsApp to +19179752041 (Igor) if: listing went live, buyer message/offer, material status change, or manual verification is required. If unchanged or if browser failed after retry, STOP — do not send any message at all.\n\nQuiet hours 11 PM–7 AM: defer non-urgent status changes to morning briefing, but manual verification needed can still be noted once if it blocks the task.",
         "timeoutSeconds": 600
-      }
+      },
+      "delivery": { "mode": "none" }
     },
     {
       "id": "sms-reply-monitor",
@@ -79,7 +83,8 @@
         "kind": "agentTurn",
         "message": "SMS monitor.\n1. Read MEMORY.md Active Tasks. Find tasks with sms-watch fields.\n2. For each: `python3 \"$OPENCLAW_REPO/scripts/imessage.py\" read \"<number>\" --limit 30`\n3. Compare to last-sms-baseline. Update last-sms-scan in MEMORY.\n\nOnly send a WhatsApp to +19179752041 (Igor) if there is a NEW INBOUND vendor reply since baseline. If nothing new, STOP — do not send any message at all.\n\nQuiet hours 11 PM–7 AM: defer to morning briefing.",
         "timeoutSeconds": 300
-      }
+      },
+      "delivery": { "mode": "none" }
     },
     {
       "id": "inbound-call-check",
@@ -95,7 +100,8 @@
         "kind": "agentTurn",
         "message": "Run: `python3 \"$OPENCLAW_REPO/scripts/vapi-call.py\" inbound-check`\n\nIf the script produced output, send it as a WhatsApp message to +19179752041 (Igor).\nIf the script produced NO output (empty), STOP immediately. Do not send any message.\n\nQuiet hours 11 PM–7 AM: defer non-urgent alerts to morning briefing.",
         "timeoutSeconds": 120
-      }
+      },
+      "delivery": { "mode": "none" }
     },
     {
       "id": "api-spend-check",
@@ -111,7 +117,8 @@
         "kind": "agentTurn",
         "message": "Run: `python3 \"$OPENCLAW_REPO/scripts/api-spend-check.py\"`\n\nSend the exact output as ONE WhatsApp message to +19179752041 (Igor). Do not reformat. After sending, STOP immediately. Do not process any echoed messages.",
         "timeoutSeconds": 120
-      }
+      },
+      "delivery": { "mode": "none" }
     },
     {
       "id": "system-health",
@@ -127,7 +134,8 @@
         "kind": "agentTurn",
         "message": "Run: `python3 \"$OPENCLAW_REPO/scripts/system-health-check.py\"`\n\nIf the script produced output, send it as a WhatsApp message to +19179752041 (Igor).\nIf the script produced NO output (empty), STOP immediately. Do not send any message.\n\nIf output mentions browser issues, run `browser close` once before sending.",
         "timeoutSeconds": 180
-      }
+      },
+      "delivery": { "mode": "none" }
     }
   ]
 }

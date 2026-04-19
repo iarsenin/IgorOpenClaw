@@ -5,6 +5,7 @@
 | Task Type | Primary Skill | Fallback |
 |-----------|--------------|----------|
 | Web browsing / form filling | browser-automation | manual instructions to user |
+| Transcription / media summaries | `/transcribe` plugin command + transcribe-url skill | browser-automation + shell |
 | Email (read/search) | email-search.py | gog gmail |
 | Calendar (read/create events) | gog calendar | manual instructions to user |
 | Google Drive (read/search) | gog drive | manual instructions to user |
@@ -70,6 +71,7 @@ If the context makes the intent genuinely unclear, **ask** (e.g. *"Close the tas
 - Reading WhatsApp history (`whatsapp.py chats`, `whatsapp.py read`, `whatsapp.py search`)
 - Sending WhatsApp messages **to the owner** (`send_message` to +19179752041) — this is the primary communication channel
 - Checking for inbound phone calls (`vapi-call.py inbound-check`) and retrieving call transcripts (`vapi-call.py status`)
+- Running `/transcribe <URL>` for Igor, including emailing the transcript package to Igor's own email address if and only if a full transcript was obtained
 
 ## SMS / iMessage reply monitoring (vendor threads)
 

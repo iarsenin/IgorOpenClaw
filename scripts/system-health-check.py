@@ -31,7 +31,7 @@ _RECENT_ERROR_THRESHOLD = 10
 def check_gateway():
     try:
         r = subprocess.run(["openclaw", "gateway", "status"],
-                           capture_output=True, text=True, timeout=10)
+                           capture_output=True, text=True, timeout=30)
         output = r.stdout + r.stderr
         if "not loaded" in output.lower() or "not found" in output.lower():
             issues.append("Gateway LaunchAgent not loaded or not found")
@@ -154,10 +154,16 @@ def _count_recent_log_events(log_path, needle, window, latest_start_cutoff=False
 def _latest_gateway_start_time(log_path):
     """Best-effort timestamp of the latest gateway listener startup in today's log."""
     latest = None
+    startup_markers = (
+        '"listening on ws://',
+        '"ready (',
+        '"Browser control listening on http://127.0.0.1:18791/',
+        '"cron: started"',
+    )
     try:
         with open(log_path, "r", encoding="utf-8", errors="replace") as f:
             for line in f:
-                if '"listening on ws://' not in line:
+                if not any(marker in line for marker in startup_markers):
                     continue
                 try:
                     obj = json.loads(line)
@@ -221,7 +227,12 @@ def check_browser_no_pages_loop():
     if not os.path.exists(log_path):
         return
     needle = "No pages available in the connected browser"
-    recent, total = _count_recent_log_events(log_path, needle, _BROWSER_NO_PAGES_WINDOW)
+    recent, total = _count_recent_log_events(
+        log_path,
+        needle,
+        _BROWSER_NO_PAGES_WINDOW,
+        latest_start_cutoff=True,
+    )
     if recent >= _BROWSER_NO_PAGES_THRESHOLD:
         issues.append(
             "Browser 'No pages available' repeated in the last "
@@ -231,23 +242,23 @@ def check_browser_no_pages_loop():
 
 
 def check_cron_jobs_binding():
-    """Validate live cron jobs file exists and, if symlinked, points to repo config.
-
-    Newer OpenClaw releases may keep a writable managed cron store as a regular
-    file. Treat non-symlink mode as valid.
-    """
-    expected = os.path.realpath(
-        os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "config", "cron", "jobs.json")
-    )
+    """Validate live cron jobs exist and still contain the repo's expected job ids."""
+    expected = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "config", "cron", "jobs.json")
     live = os.path.expanduser("~/.openclaw/cron/jobs.json")
     if not os.path.exists(live):
         issues.append("Live cron config missing: ~/.openclaw/cron/jobs.json")
         return
-    if not os.path.islink(live):
+    try:
+        with open(expected, "r", encoding="utf-8") as fh:
+            expected_job_ids = {job["id"] for job in json.load(fh).get("jobs", [])}
+        with open(live, "r", encoding="utf-8") as fh:
+            live_job_ids = {job["id"] for job in json.load(fh).get("jobs", [])}
+    except Exception as exc:
+        issues.append(f"Unable to parse cron job config: {exc}")
         return
-    target = os.path.realpath(live)
-    if target != expected:
-        issues.append("Live cron config points to a different file than repo config/cron/jobs.json.")
+    missing = sorted(expected_job_ids - live_job_ids)
+    if missing:
+        issues.append("Live cron config missing expected jobs: " + ", ".join(missing))
 
 
 def check_chrome_orphans():

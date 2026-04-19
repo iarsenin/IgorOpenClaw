@@ -1,0 +1,11 @@
+{
+  "id": "transcribe-command",
+  "enabledByDefault": true,
+  "name": "Transcribe Command",
+  "description": "Deterministic /transcribe command that runs the repo transcript helper directly.",
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {}
+  }
+}
