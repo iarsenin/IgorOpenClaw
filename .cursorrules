@@ -90,14 +90,44 @@ tail -50 /tmp/openclaw/openclaw-$(date +%Y-%m-%d).log
 
 ## Current state snapshot
 
-**STATUS: SHUT DOWN as of 2026-04-06.** Gateway stopped, all LaunchAgents
-removed. Repo preserved for future reinstall. See `SETUP_GUIDE.md` to
-bring back online.
+**STATUS: ACTIVE** — Restored 2026-04-18. Gateway, LaunchAgents, cron, and WhatsApp are running.
 
-### To restore Clawd — checklist before running setup.sh
+### Current config (as of 2026-04-19)
+
+- **Primary model:** google/gemini-2.5-pro (OpenAI quota exhausted 2026-04-06; restore with `primary: "openai/gpt-5.4-mini"` after adding credits)
+- **Fallback model:** openai/gpt-5.4-mini
+- **WhatsApp:** allowlist-only (+19179752041, +19176997436), groups disabled
+- **Gateway:** localhost:18789, token auth (token injected from .env via template)
+- **Exec config:** `host: "gateway"`, `security: "full"`, pathPrepend (python3, homebrew).
+  KEEP `security: "full"` on BOTH `tools.exec` in openclaw.json AND
+  `~/.openclaw/exec-approvals.json` (`ask: "off"`, `autoAllowSkills: true`).
+  **Agent must NEVER pass `host`, `security`, or `ask` overrides in exec tool calls** — see TOOLS.md § Exec call rules.
+- **Browser:** Chrome debug profile at `~/.openclaw/chrome-profile/` (port 9222).
+  `refs=aria` is NOT supported (no Playwright `_snapshotForAI`); omit the refs param.
+- **Daily restart:** 4 AM ET via launchd (`ai.openclaw.daily-restart`)
+- **Cron jobs:** post-restart-resume (4:05 AM), morning briefing (7:30 AM),
+  api-spend-check (5:00 AM, 180s timeout — uses OPENAI_ADMIN_KEY; reads Cursor token from local SQLite),
+  email triage (every 2h 8AM-10PM), chrono24-listing-monitor (5x/day),
+  sms-reply-monitor (~every 2h 8:30AM-8:30PM), inbound-call-check (every 30 min), system-health (5x/day).
+  Cron jobs use `--no-deliver`; agent sends WhatsApp via `message` tool explicitly.
+  Browser-using crons must end with `browser close`.
+- **Workspace file size limit:** Gateway bootstraps workspace files into context with a **12,000-char limit**.
+  `AGENTS.md` must stay ≤ 12,000 chars (currently 11,121). `TOOLS.md` must stay ≤ 12,000 chars (currently 11,960).
+  Files over the limit are silently truncated — the agent runs without the tail of its rules.
+- **Task persistence:** MEMORY.md, TTL 7 days, staleness 48h. See AGENTS.md.
+- **Skills (17):** browser-automation, screenshot, coding-agent, gemini, github,
+  gh-issues, peekaboo, summarize, healthcheck, openai-image-gen, openai-whisper-api,
+  weather, skill-creator, node-connect, gog, himalaya, apple-reminders
+- **iMessage/SMS:** scripts/imessage.py — requires Full Disk Access for python3 binary.
+- **Phone calls:** scripts/vapi-call.py — Riley assistant (VAPI_ASSISTANT_ID in .env).
+  Outbound: +19179628631. Cost ~11c/min. Always ask before dialing.
+- **Email:** Gmail works (himalaya + gog OAuth). Yahoo NOT wired (YAHOO_APP_PASSWORD missing from .env).
+- **Calendar/Drive/Contacts:** gog CLI (OAuth, project polar-city-407401)
+- **GitHub:** https://github.com/iarsenin/IgorOpenClaw (private)
+
+### To restore after future shutdown
 
 1. **Add OpenAI credits** at https://platform.openai.com/settings/billing
-   (account hit quota limit 2026-04-06; caused 8,696 errors / retry storm)
    Then restore primary model in `config/openclaw.json.template`:
    `primary: "openai/gpt-5.4-mini"` and `fallbacks: ["google/gemini-2.5-pro"]`
 
@@ -113,35 +143,5 @@ bring back online.
    ```bash
    openclaw channels login --channel whatsapp
    ```
-   Session had a 440 conflict (registered=False). If QR code doesn't appear,
-   first clear all Linked Devices on the phone:
+   If QR code doesn't appear, first clear all Linked Devices on the phone:
    WhatsApp app → Settings → Linked Devices → tap each → Log Out.
-
-### Last known working config (before shutdown)
-
-- **Primary model (at shutdown):** google/gemini-2.5-pro (OpenAI quota exhausted; restore after adding credits — see step 1)
-- **Fallback model:** openai/gpt-5.4-mini
-- **WhatsApp:** allowlist-only (+19179752041, +19176997436), groups disabled
-- **Gateway:** localhost:18789, token auth (token injected from .env via template)
-- **Exec config:** `host: "gateway"`, `security: "full"`, pathPrepend (python3, homebrew).
-  KEEP `security: "full"` on BOTH `tools.exec` in openclaw.json AND
-  `~/.openclaw/exec-approvals.json` (`ask: "off"`, `autoAllowSkills: true`).
-  Reverting either to `"allowlist"` re-introduces 2-minute approval waits in cron sessions.
-- **Browser:** Chrome debug profile at `~/.openclaw/chrome-profile/` (port 9222)
-- **Daily restart:** 4 AM ET via launchd (`ai.openclaw.daily-restart`)
-- **Cron jobs:** post-restart-resume (4:05 AM), morning briefing (7:30 AM),
-  api-spend-check (5:00 AM — uses OPENAI_ADMIN_KEY; reads Cursor token from local SQLite),
-  email triage (every 2h 8AM-10PM), chrono24-listing-monitor (5x/day),
-  sms-reply-monitor (~every 2h 8:30AM-8:30PM), inbound-call-check (5x/day), system-health (5x/day).
-  Cron jobs use `--no-deliver`; agent sends WhatsApp via `message` tool explicitly.
-  Browser-using crons must end with `browser close`.
-- **Task persistence:** MEMORY.md, TTL 7 days, staleness 48h. See AGENTS.md.
-- **Skills (17):** browser-automation, screenshot, coding-agent, gemini, github,
-  gh-issues, peekaboo, summarize, healthcheck, openai-image-gen, openai-whisper-api,
-  weather, skill-creator, node-connect, gog, himalaya, apple-reminders
-- **iMessage/SMS:** scripts/imessage.py — requires Full Disk Access for python3 binary.
-- **Phone calls:** scripts/vapi-call.py — Riley assistant (VAPI_ASSISTANT_ID in .env).
-  Outbound: +19179628631. Cost ~11c/min. Always ask before dialing.
-- **Email:** Gmail works (himalaya + gog OAuth). Yahoo NOT wired (see step 2).
-- **Calendar/Drive/Contacts:** gog CLI (OAuth, project polar-city-407401)
-- **GitHub:** https://github.com/iarsenin/IgorOpenClaw (private)

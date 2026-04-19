@@ -282,6 +282,30 @@ openclaw agent --agent main --message "Reply with OK only." --json
 
 If sessions are not wiped, accumulated conversation history can exceed model context windows (especially gpt-5.4-mini at 391K), causing "input exceeds context window" errors every time.
 
+### AGENTS.md or TOOLS.md truncated (agent missing rules)
+
+The gateway bootstraps workspace files into agent context with a **12,000-character limit**. Files over the limit are silently truncated — the agent runs without the tail of its rules, which can cause it to hallucinate exec parameters, ignore cron behavior rules, or skip output-format guidelines.
+
+Symptom: log line `workspace bootstrap file AGENTS.md is NNNNN chars (limit 12000); truncating in injected context`.
+
+Fix: keep both files under 12,000 chars. Check sizes:
+
+```bash
+wc -c ~/.openclaw/workspace/AGENTS.md ~/.openclaw/workspace/TOOLS.md
+```
+
+If either exceeds ~11,800 chars, trim content before adding more (consolidate tables, shorten examples, move reference material to a separate workspace file).
+
+### Exec calls blocked in cron ("host not allowed" or "cannot wait for interactive approval")
+
+Symptom log lines:
+- `exec host not allowed (requested auto; configured host is gateway)`
+- `exec denied: Cron runs cannot wait for interactive exec approval. Effective host exec policy: security=allowlist ask=on-miss`
+
+Cause: the agent explicitly passed `host: "auto"`, `security: "allowlist"`, or `ask: "on-miss"` in the exec tool call, overriding the correct gateway defaults.
+
+The gateway is configured with `host: "gateway"`, `security: "full"`, `ask: "off"` (in both `openclaw.json` and `~/.openclaw/exec-approvals.json`). These defaults are correct. The agent should **never** override them — the rule is documented in `workspace/TOOLS.md` § Exec call rules. If you see this error repeatedly, check that AGENTS.md is not being truncated (see above), since the truncation can cause the agent to lose the rules that prevent this.
+
 ### Cron jobs reporting "error" but messages delivered (false positive)
 
 Cron jobs that explicitly send WhatsApp via the agent's `message` tool may report a "Delivering to WhatsApp requires target" error in the cron status even though the actual message was delivered. This happens because the cron delivery layer also tries to send the agent's final response text, which fails in isolated sessions with no originating channel.
@@ -297,7 +321,9 @@ openclaw gateway restart
 
 ## Restoring Clawd
 
-Complete checklist to bring the agent back online after the 2026-04-06 shutdown:
+> **Current status: ACTIVE** — restored 2026-04-18. This section is the checklist for future shutdowns.
+
+Complete checklist to bring the agent back online after a shutdown:
 
 1. **Add OpenAI credits** — [platform.openai.com/settings/billing](https://platform.openai.com/settings/billing)
    Then restore the primary model in `config/openclaw.json.template`:
