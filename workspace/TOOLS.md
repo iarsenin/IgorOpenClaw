@@ -144,6 +144,8 @@ Dependencies:
 
 **Cold start:** If you see `No pages available in the connected browser`, the managed Chrome has no tab yet. Run `browser navigate` to your target URL (or `about:blank` first) before `browser snapshot` — never snapshot first on a fresh session. The post-restart warm-up intentionally leaves one blank tab open so later sessions can attach cleanly.
 
+**`refs=aria` is NOT supported.** The managed Chrome debug profile does not have Playwright `_snapshotForAI` support. Never pass `refs: "aria"` to `browser snapshot` — it will error. Use default refs mode (omit the refs parameter entirely).
+
 1. `browser navigate` to page
 2. `browser snapshot` to get refs (e.g. `e123`)
 3. `browser act` with `ref: "e123"` + `action` (both required)
@@ -235,6 +237,10 @@ Include ALL context in task_instructions (business name, numbers, dates, constra
 ## Built-in Tools
 
 - execute_shell, read_file, write_file, search_web, send_message, cron
+
+### Exec call rules — CRITICAL
+
+**NEVER pass `host`, `security`, or `ask` parameters in exec calls.** Gateway defaults (`host: "gateway"`, `security: "full"`, `ask: "off"`) are correct for all automation. Overriding breaks cron sessions: `host: "auto"` → rejected; `security: "allowlist"` → denied unless pre-approved; `ask: "on-miss"` → cron cannot wait for approval. Just run the command.
 
 ## Safety Levels
 

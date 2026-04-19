@@ -116,7 +116,7 @@
       "payload": {
         "kind": "agentTurn",
         "message": "Run: `python3 \"$OPENCLAW_REPO/scripts/api-spend-check.py\"`\n\nSend the exact output as ONE WhatsApp message to +19179752041 (Igor). Do not reformat. After sending, STOP immediately. Do not process any echoed messages.",
-        "timeoutSeconds": 120
+        "timeoutSeconds": 180
       },
       "delivery": { "mode": "none" }
     },
