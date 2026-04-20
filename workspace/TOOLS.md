@@ -108,12 +108,13 @@ Flow: `browser navigate` → `browser snapshot` (get `ref` like `e123`) → `bro
 
 ```bash
 python3 "$OPENCLAW_REPO/scripts/contacts.py" search "Neil Tancre"
+python3 "$OPENCLAW_REPO/scripts/contacts.py" search "Gitstein"
 python3 "$OPENCLAW_REPO/scripts/contacts.py" search "850-490"
 python3 "$OPENCLAW_REPO/scripts/contacts.py" get "Neil Tancre"
 python3 "$OPENCLAW_REPO/scripts/contacts.py" list --limit 50
 ```
 
-Reading is autonomous. **Preferred first step** for finding phone numbers or emails.
+**Reading contacts is FULLY AUTONOMOUS** — never requires approval, never "blocked". If Igor mentions a person by name (for a call, email, SMS, etc.), the first thing you do is run `contacts.py search <name>` yourself. Only ask Igor for the number if the lookup chain (Apple Contacts → `gog contacts` → `imessage.py search` → `email-search.py`) all return nothing. Do NOT skip the lookup and ask for the number.
 
 ## iMessage / SMS — via imessage.py
 
@@ -168,10 +169,11 @@ Ask Igor: *"May Riley leave your callback number?"* Encode verbatim in task inst
 
 ### Outbound call flow
 
-1. Draft call plan + ask about callback -> get user approval
-2. `vapi-call.py call <number> <instructions>` (include goals + YES/NO lines)
-3. Async: wait 30s, poll `status <call_id>` every 60s until `ended`
-4. Read transcript + report, summarize for user
+1. **Resolve the number yourself (autonomous)** — `contacts.py search <name>`, then `gog contacts ls`, then `imessage.py search`, then `email-search.py`. Only ask Igor for the number if all four return nothing. Never ask Igor for a number you haven't tried to look up.
+2. Draft call plan + ask about callback → get user approval (one y/n line).
+3. `vapi-call.py call <number> <instructions>` (include goals + YES/NO callback lines).
+4. Async: wait 30s, poll `status <call_id>` every 60s until `ended`.
+5. Read transcript + report, summarize for user.
 
 ### Riley has NO shared context
 
