@@ -72,11 +72,11 @@
     {
       "id": "sms-reply-monitor",
       "name": "SMS Reply Monitor",
-      "description": "Check SMS threads for vendor replies",
+      "description": "Check SMS threads for vendor replies. DISABLED until Full Disk Access is granted to python3 (see MEMORY § System Issues). Every run currently fails and the agent writes conflicting last-sms-scan bullets, corrupting MEMORY.md. Re-enable once FDA is fixed.",
       "agentId": "main",
       "schedule": { "kind": "cron", "expr": "30 8,11,14,17,20 * * *" },
       "timezone": "America/New_York",
-      "enabled": true,
+      "enabled": false,
       "sessionTarget": "isolated",
       "wakeMode": "now",
       "payload": {
