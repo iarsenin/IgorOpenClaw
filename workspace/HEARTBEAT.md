@@ -3,42 +3,36 @@
 <!--
   Defines what the agent does proactively (without user prompting).
   Scheduled jobs are configured in config/cron/jobs.json — this file
-  describes behavioral guidelines, not schedules.
+  describes behavioral guidelines, not the canonical schedule.
 -->
 
-## On Every Heartbeat (~30 min cycle)
+## On Every Heartbeat
 
 1. Check `MEMORY.md → Active Tasks` — resume any with status `active`
 2. Process any queued user messages (WhatsApp, etc.)
-3. If this session **used the managed browser**, end the turn with **`browser close`** before replying (see `AGENTS.md` § Browser hygiene) — do not leave Chrome open for Igor
+3. If this session used the managed browser, end the turn with `browser close` (see `AGENTS.md` § Browser hygiene)
 
-## Scheduled Jobs (see config/cron/jobs.json)
+## Scheduled Jobs (canonical source: config/cron/jobs.json)
 
-| Job                | Schedule              | Purpose                              |
-|--------------------|-----------------------|--------------------------------------|
-| post-restart-resume| 4:05 AM daily         | Resume active tasks after restart    |
-| morning-briefing   | 7:30 AM daily         | Emails, calendar, overnight errors   |
-| email-triage       | Every 2h, 8 AM–10 PM | Flag urgent, draft routine replies + MEMORY-related senders |
-| chrono24-listing-monitor | 8 AM, 11 AM, 2 PM, 5 PM, 8 PM ET (5×) | Chrono24 listing vs **last-chrono-baseline** |
-| sms-reply-monitor  | ~2h, 8:30 AM–8:30 PM ET | Poll `MEMORY` **sms-watch** threads via `imessage.py`; on read errors, note MEMORY only (no WhatsApp spam unless urgent) |
-| inbound-call-check | Every 30 min          | Poll Vapi for new inbound calls      |
-| api-spend-check    | 5:00 AM ET daily      | Runs `scripts/api-spend-check.py` → WhatsApp (OpenAI + Vapi $, Cursor plan) |
-| system-health      | Every 6h              | Gateway, disk, error log check       |
+| Job                      | ET Schedule                    | Purpose                                               |
+|--------------------------|--------------------------------|-------------------------------------------------------|
+| post-restart-resume      | 4:05 AM daily                  | Resume active tasks after restart; warm browser       |
+| api-spend-check          | 5:00 AM daily                  | Yesterday's OpenAI + Vapi $ + Cursor plan → WhatsApp  |
+| morning-briefing         | 7:30 AM daily                  | Emails + calendar + overnight calls + active tasks    |
+| email-triage             | 8, 11, 14, 17, 20 (5×/day)     | Flag urgent emails + MEMORY-task senders              |
+| chrono24-listing-monitor | 8, 11, 14, 17, 20 (5×/day)     | Listing vs `last-chrono-baseline`; `browser close`    |
+| sms-reply-monitor        | 8:30, 11:30, 14:30, 17:30, 20:30 | Poll MEMORY `sms-watch` threads via `imessage.py`     |
+| system-health            | 4, 8, 12, 16, 20 (5×/day)      | Gateway, disk, error log                              |
+| inbound-call-check       | Every 30 min                   | Poll Vapi for new inbound calls                       |
 
 ## Behavioral Rules
 
-- **Questions to Igor:** When a heartbeat, cron job, or proactive check needs a decision or missing detail, use **y/n** or **multiple choice** when practical — see `AGENTS.md` § Questions to the user (don’t force the format when it doesn’t fit).
-- **Quiet hours (11 PM – 7 AM ET):** suppress non-critical notifications
-- **Critical** = security alerts, service outages, messages marked urgent
-- **Email triage:** draft replies but never send without user approval
-- **System health:** only notify user if something is wrong
-- **Inbound calls during quiet hours:** do NOT send an immediate WhatsApp alert.
-  The inbound-check cron still runs and tracks seen calls, but the alert is deferred
-  to the morning briefing at 7:30 AM. Exception: if the caller's number matches a
-  contact from an active task in MEMORY.md, treat it as critical and notify immediately.
-- **Morning briefing:** deliver via WhatsApp; include active tasks from MEMORY.md
-  and any overnight inbound phone calls
-- **SMS reply monitor:** uses **`sms-watch`** / **`last-sms-baseline`** in task context (`AGENTS.md`);
-  do not spam WhatsApp when there is nothing new
-- **Chrono24 monitor:** only runs meaningful work if MEMORY has an active Chrono24 task; updates **last-chrono-baseline**; must **`browser close`** after any browser use
-- **Browser:** managed Chrome must not be left open after Clawd’s turn — `AGENTS.md` § Browser hygiene
+- **Quiet hours (11 PM – 7 AM ET):** suppress non-critical notifications. Cron jobs still run; findings defer to morning briefing.
+- **Critical** = security alerts, service outages, messages marked urgent. Send immediately even in quiet hours.
+- **Email triage:** draft replies but never send without user approval.
+- **System health:** only notify if something is wrong.
+- **Inbound calls during quiet hours:** do NOT alert immediately. Track seen calls; surface in morning briefing. Exception: if the caller's number matches an active MEMORY task, treat as critical.
+- **Morning briefing:** deliver via WhatsApp; include active tasks from MEMORY.md + overnight calls.
+- **SMS reply monitor:** uses `sms-watch` / `last-sms-baseline` per task; don't spam WhatsApp when there's nothing new.
+- **Chrono24 monitor:** only does real work if MEMORY has an active Chrono24 task; updates `last-chrono-baseline`; must `browser close` after any readable check.
+- **Browser:** managed Chrome must not be left open after Clawd's turn (see `AGENTS.md` § Browser hygiene).

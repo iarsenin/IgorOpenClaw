@@ -39,7 +39,7 @@
 ## Communication Preferences
 
 - Primary channel to the agent: **WhatsApp** (to +19179752041) — this is what wakes Clawd in real time
-- **SMS / iMessage (Messages.app):** used for many vendors and contacts; Clawd does **not** receive these automatically (see `TOOLS.md` § iMessage / SMS — CRITICAL)
+- **SMS / iMessage (Messages.app):** used for many vendors and contacts; Clawd does **not** receive these automatically (see `TOOLS.md` § iMessage / SMS)
 - Prefers bullet-point summaries over long prose
 - When the agent needs a **decision or missing detail**, prefers **yes/no** or **multiple-choice** questions over open-ended questions when the topic allows (see `AGENTS.md` § Questions to the user — agent should not force the format when it does not fit)
 - Wants explicit confirmation prompts before any action that costs money or is irreversible

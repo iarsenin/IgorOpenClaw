@@ -2,27 +2,18 @@
 
 ## Environment
 
-- **OS:** macOS (Apple Silicon / ARM64)
-- **Shell:** zsh
-- **Node.js:** 24.15.0 (Homebrew preferred; `scripts/setup.sh` targets `/opt/homebrew/opt/node@24/bin/node`)
-- **OpenClaw:** 2026.4.15
-- **OpenClaw config:** `~/.openclaw/openclaw.json` — copied from `config/openclaw.json.template` by `scripts/setup.sh`
-- **OpenClaw workspace:** `~/.openclaw/workspace/` — symlinked from repo `workspace/`
-- **Cron jobs:** `~/.openclaw/cron/jobs.json` — writable live store seeded from repo `config/cron/jobs.json`
-- **Gateway shell:** Use `python3` (NOT `python`). Use `grep` (NOT `rg`). Both `python` and `rg` are NOT in the daemon PATH.
-- **Upgrade rule:** After `openclaw update`, `openclaw doctor --fix`, or `openclaw gateway install`, re-run `bash "$OPENCLAW_REPO/scripts/setup.sh"` to restore daemon env vars, the linked `/transcribe` plugin, and the live cron store
-- **Workspace file paths:** Use just `MEMORY.md`, `AGENTS.md`, etc. — never prefix with `workspace/`.
-- **Repo path:** The env var `$OPENCLAW_REPO` is pre-set in the daemon. Use it for ALL script calls:
+- **OS:** macOS (Apple Silicon). **Shell:** zsh. **OpenClaw:** 2026.4.15. **Node:** 24.15.0.
+- **Config:** `~/.openclaw/openclaw.json` (generated from `config/openclaw.json.template` by `scripts/setup.sh`).
+- **Workspace:** `~/.openclaw/workspace/` (symlinked from repo `workspace/`). Reference workspace files by bare name (`MEMORY.md`), never prefix with `workspace/`.
+- **Cron store:** `~/.openclaw/cron/jobs.json` (writable; seeded from repo `config/cron/jobs.json`).
+- **Gateway shell PATH:** `python3` and `grep` only — `python` and `rg` are NOT available.
+- **Repo path:** `$OPENCLAW_REPO` is pre-set in the daemon env. ALWAYS use it for scripts — never hard-code:
 
 ```bash
 python3 "$OPENCLAW_REPO/scripts/SCRIPT_NAME" [args]
 ```
 
-**NEVER** hard-code or re-define the repo path. Always use `$OPENCLAW_REPO`.
-
-## Interaction with Igor (quick replies)
-
-Prefer **yes/no** or **multiple choice** (A/B/C) questions when possible. Full rules: `AGENTS.md`.
+- **After `openclaw update`, `doctor --fix`, or `gateway install`:** re-run `bash "$OPENCLAW_REPO/scripts/setup.sh"` to restore daemon env, `/transcribe` plugin, and cron store.
 
 ## Bundled Skills (ready)
 
@@ -66,7 +57,11 @@ Folder: `--folder inbox` (default), `sent`, `all`, `drafts`, `trash`
   - Yahoo `all` searches Inbox+Sent+Draft+Trash and prints IDs as `<Folder>:<ID>`; pass that same ID to `read --account yahoo --id ...`
 Account: `--account both` (default), `gmail`, `yahoo`
 
-**Broaden if zero results:** try `--folder all`, then `--body`/`--subject` keyword, then each account separately. Medical portals often use noreply domains different from the brand name.
+**When to broaden the search:** If a `--from` search returns zero results, try:
+1. `--folder all` (searches all folders, not just inbox)
+2. `--body` or `--subject` with a keyword instead of sender
+3. Both accounts explicitly: `--account gmail` then `--account yahoo`
+Note: some senders (e.g. medical portals) use a noreply domain different from the brand name.
 
 ### Read a specific email
 
@@ -90,52 +85,24 @@ ALWAYS draft first, show user, send only after approval.
 - NEVER send without showing the draft first.
 - Yahoo rate-limit: if unavailable, script prints a note and returns Gmail results. Do NOT retry Yahoo more than once per 30 min.
 
-## Media Transcription — `/transcribe` plugin + transcribe-url.py
+## Media Transcription — `/transcribe` plugin
 
-Slash command syntax from Igor:
-
-```text
-/transcribe <URL>
-```
-
-The linked OpenClaw plugin runs the helper directly, bypassing the chat model (`api.on("before_dispatch", ...)`). For new slash commands: implement as an OpenClaw plugin, not skill-only; `api.registerCommand()` alone is not enough for WhatsApp.
-
-Underlying helper:
+Igor sends `/transcribe <URL>` via WhatsApp. The linked OpenClaw plugin runs the helper directly (bypasses the chat model):
 
 ```bash
 python3 "$OPENCLAW_REPO/scripts/transcribe-url.py" run "<URL>" --email-to "igor.arsenin@gmail.com" --json
 ```
 
-Behavior:
-- Checks access first; if direct access fails, tries alternate public retrieval paths
-- Prefers canonical publisher feeds and existing full transcripts over re-transcribing
-- Checks provider transcript endpoints exposed by podcast feeds before downloading audio
-- Relabels generic transcript speakers like `Speaker 1` when hosts/guests identify themselves clearly
-- Falls back to audio download + transcription when needed
-- Formats the WhatsApp reply as a concise title plus 3-5 bullets instead of one dense paragraph
-- Sends email only when a **full transcript** was actually obtained
-- If transcript is impossible, still send a concise WhatsApp summary/status, but **do not send email**
-
-Dependencies:
-- `yt-dlp` strongly recommended for YouTube and many embedded media pages
-- `ffmpeg` strongly recommended for audio format conversion before transcription
+Behavior: prefers canonical feeds/existing transcripts, falls back to `yt-dlp` + `ffmpeg` + Whisper. Reply is title + 3-5 bullets. Email is sent **only when a full transcript was obtained**; otherwise WhatsApp summary only.
 
 ## Browser Rules
 
-**Always `browser close` when done.** Use `ref` from `browser snapshot`, NOT CSS selectors. Exception: after the daily restart, leave the intentional shared `about:blank` warm-up tab open.
+Flow: `browser navigate` → `browser snapshot` (get `ref` like `e123`) → `browser act` (ref + action, both required) → **`browser close` (mandatory, always)**.
 
-**Cold start:** If you see `No pages available in the connected browser`, the managed Chrome has no tab yet. Run `browser navigate` to your target URL (or `about:blank` first) before `browser snapshot` — never snapshot first on a fresh session. The post-restart warm-up intentionally leaves one blank tab open so later sessions can attach cleanly.
-
-**`refs=aria` is NOT supported.** The managed Chrome debug profile does not have Playwright `_snapshotForAI` support. Never pass `refs: "aria"` to `browser snapshot` — it will error. Use default refs mode (omit the refs parameter entirely).
-
-1. `browser navigate` to page
-2. `browser snapshot` to get refs (e.g. `e123`)
-3. `browser act` with `ref: "e123"` + `action` (both required)
-4. `browser close` when done (mandatory — success, failure, or timeout)
-
-Cron jobs using browser must end with `browser close`. **chrono24.com** blocks non-browser requests.
-
-If a site shows a human-verification / anti-bot interstitial such as Chrono24's "Verify you are human", do not try to automate or click through it. Leave the managed browser open for Igor to solve manually, report that the task is blocked on verification, and resume normal browser cleanup only after the real page is accessible again.
+- Use `ref` from snapshot, NOT CSS selectors. Do NOT pass `refs: "aria"` — not supported by this Chrome profile.
+- **Cold start:** on `No pages available in the connected browser`, run `browser navigate` first (target URL or `about:blank`) before snapshotting. The post-restart warm-up leaves one `about:blank` tab open — don't close it.
+- **chrono24.com** blocks non-browser requests (use browser, never `web_fetch`).
+- **Anti-bot interstitial** (e.g. "Verify you are human"): do NOT automate. Leave browser open for Igor to solve manually, report blocked state, skip the usual `browser close`.
 
 ## Apple Contacts — via contacts.py
 
@@ -222,13 +189,10 @@ Include ALL context in task_instructions (business name, numbers, dates, constra
 
 ### Exec call rules — CRITICAL
 
-**`$OPENCLAW_REPO` IS set** in the daemon env. Always: `python3 "$OPENCLAW_REPO/scripts/name.py" args`. If exec fails, **report the error and stop** — never try workarounds.
-
-**NEVER pass `host`, `security`, or `ask` in exec calls.** Gateway defaults are correct (`host: "gateway"`, `security: "full"`, `ask: "off"`). Overriding breaks cron: `host: "auto"` → rejected; `security: "allowlist"` → denied; `ask: "on-miss"` → cron can't wait.
-
-**Compound commands are BLOCKED.** Single direct commands only — no `sleep N;`, no `&&`, no `$(...)`, no multi-line. One command per exec call.
-
-**NEVER read or edit script files.** Scripts at `$OPENCLAW_REPO/scripts/` are opaque — run them, never inspect or patch them. They are outside the workspace sandbox. If a script fails, report the error; do not attempt to fix the source.
+- **NEVER pass `host`, `security`, or `ask` in exec calls.** Gateway defaults are correct (`host: "gateway"`, `security: "full"`, `ask: "off"`). Overriding breaks cron: `host: "auto"` → rejected; `security: "allowlist"` → denied; `ask: "on-miss"` → cron can't wait.
+- **Compound commands are BLOCKED by exec preflight.** One command per call — no `sleep N;`, no `&&`, no `$(...)`, no multi-line scripts.
+- **NEVER read or edit files under `scripts/`.** They live outside the workspace sandbox and are opaque — run them, never patch. If a script fails, report the error and stop; do not invent workarounds.
+- **`$OPENCLAW_REPO` IS set** in the daemon env. Use it directly — never hard-code or reason that it isn't resolving.
 
 ## Safety Levels
 
