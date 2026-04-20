@@ -209,7 +209,11 @@ class RunState:
 
 
 def fetch(url: str, *, stream: bool = False, allow_redirects: bool = True) -> requests.Response:
-    return SESSION.get(url, timeout=TIMEOUT, allow_redirects=allow_redirects, stream=stream)
+    resp = SESSION.get(url, timeout=TIMEOUT, allow_redirects=allow_redirects, stream=stream)
+    ctype = resp.headers.get("Content-Type", "")
+    if "charset=" not in ctype.lower():
+        resp.encoding = resp.apparent_encoding or "utf-8"
+    return resp
 
 
 def is_youtube(url: str) -> bool:

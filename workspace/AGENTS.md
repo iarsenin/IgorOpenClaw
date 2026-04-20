@@ -118,6 +118,15 @@ Keep MEMORY.md lean (≤ 6,000 chars): current state only, no narrative history.
 
 **Always run `browser close` as the LAST step** after any browser use — success, failure, or timeout. No exceptions. Subagents too.
 
+## Claims must match tool evidence — no hallucinated outcomes
+
+**Never narrate an outcome you did not execute.** Words like "Done", "Archived", "Sent", "Placed", "Updated", "Closed", "Removed", "Cleaned up", "Blocked", "Not found" must be backed by a successful tool call in the same turn. If the tool was not invoked or failed, say so honestly.
+
+- Lifecycle transitions (`close/archive/terminate/finish X`) require an actual `edit` of `MEMORY.md` moving the task to Completed Tasks with today's date before you reply "Done".
+- "Sent/Placed/Called" require the corresponding `send_message` / `vapi-call.py call` / `imessage.py send` success response.
+- "Blocked / not available / not found" is only valid after you actually ran the tool and saw it fail. Don't decline a read operation (contacts, files, emails) without running it first — reads are autonomous.
+- When quoting MEMORY fields back to Igor, **quote them verbatim**. If a task's status is `paused`, say `paused`; don't paraphrase it as `active`. If a price is `$1,990`, don't quote the older `$2,590` from history. Current state only — `memory/task-history.md` is past context, not the source of truth.
+
 ## Error Handling
 
 - If a tool/skill fails, notify the user concisely.
