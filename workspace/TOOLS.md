@@ -66,11 +66,7 @@ Folder: `--folder inbox` (default), `sent`, `all`, `drafts`, `trash`
   - Yahoo `all` searches Inbox+Sent+Draft+Trash and prints IDs as `<Folder>:<ID>`; pass that same ID to `read --account yahoo --id ...`
 Account: `--account both` (default), `gmail`, `yahoo`
 
-**When to broaden the search:** If a `--from` search returns zero results, try:
-1. `--folder all` (searches all folders, not just inbox)
-2. `--body` or `--subject` with a keyword instead of sender
-3. Both accounts explicitly: `--account gmail` then `--account yahoo`
-Note: some senders (e.g. medical portals) use a noreply domain different from the brand name.
+**Broaden if zero results:** try `--folder all`, then `--body`/`--subject` keyword, then each account separately. Medical portals often use noreply domains different from the brand name.
 
 ### Read a specific email
 
@@ -102,21 +98,7 @@ Slash command syntax from Igor:
 /transcribe <URL>
 ```
 
-Primary live path:
-
-```text
-/transcribe <URL>
-```
-
-The linked OpenClaw plugin command runs the helper directly, bypassing the chat model.
-
-Implementation notes for future commands:
-- A live WhatsApp slash command belongs in an **OpenClaw plugin**, not in a skill alone
-- Skills are still useful for documenting workflow and for non-command transcript requests
-- For the actual `/transcribe` contract, the critical hook is `api.on("before_dispatch", ...)`
-- `api.registerCommand()` is kept as a secondary surface, but it is not enough by itself for the WhatsApp path
-- The matcher must tolerate wrapped inbound bodies such as `[WhatsApp ...]: /transcribe ...`
-- The plugin should call the helper script directly and return the final text reply, rather than asking the chat model to decide what to do
+The linked OpenClaw plugin runs the helper directly, bypassing the chat model (`api.on("before_dispatch", ...)`). For new slash commands: implement as an OpenClaw plugin, not skill-only; `api.registerCommand()` alone is not enough for WhatsApp.
 
 Underlying helper:
 
@@ -240,7 +222,13 @@ Include ALL context in task_instructions (business name, numbers, dates, constra
 
 ### Exec call rules — CRITICAL
 
-**NEVER pass `host`, `security`, or `ask` parameters in exec calls.** Gateway defaults (`host: "gateway"`, `security: "full"`, `ask: "off"`) are correct for all automation. Overriding breaks cron sessions: `host: "auto"` → rejected; `security: "allowlist"` → denied unless pre-approved; `ask: "on-miss"` → cron cannot wait for approval. Just run the command.
+**`$OPENCLAW_REPO` IS set** in the daemon env. Always: `python3 "$OPENCLAW_REPO/scripts/name.py" args`. If exec fails, **report the error and stop** — never try workarounds.
+
+**NEVER pass `host`, `security`, or `ask` in exec calls.** Gateway defaults are correct (`host: "gateway"`, `security: "full"`, `ask: "off"`). Overriding breaks cron: `host: "auto"` → rejected; `security: "allowlist"` → denied; `ask: "on-miss"` → cron can't wait.
+
+**Compound commands are BLOCKED.** Single direct commands only — no `sleep N;`, no `&&`, no `$(...)`, no multi-line. One command per exec call.
+
+**NEVER read or edit script files.** Scripts at `$OPENCLAW_REPO/scripts/` are opaque — run them, never inspect or patch them. They are outside the workspace sandbox. If a script fails, report the error; do not attempt to fix the source.
 
 ## Safety Levels
 
