@@ -29,6 +29,17 @@ contains:
    **`~/.openclaw/openclaw.json`**, restart the gateway: `openclaw gateway restart`.
 4. **After editing any `workspace/*.md` file**, changes take effect on the
    agent's next turn (no restart needed).
+5. **Never restart the gateway blindly.** `openclaw gateway restart` sends
+   SIGTERM to the live process and kills everything in flight (transcribe
+   jobs, active agent turns, vapi calls, browser sessions). Before restarting:
+   - Check `/tmp/openclaw/openclaw-$(date +%Y-%m-%d).log | tail -20` for recent
+     inbound messages without a matching `auto-reply sent` for that `correlationId`
+     — that means a reply is still being worked on.
+   - Look for `transcribe-command intercepting before_dispatch` lines
+     without a later completion for that URL.
+   - If any in-flight work is detected, either wait for it to finish or ask Igor
+     before restarting. MEMORY.md / workspace/*.md edits never need a restart;
+     only config/cron and gateway-level JSON changes do.
 5. **SETUP_GUIDE.md is a standalone doc** meant to be pasted into a Gemini
    session. Keep it self-contained with full commands and context.
 
