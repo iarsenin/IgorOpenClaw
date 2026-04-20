@@ -81,7 +81,7 @@
       "wakeMode": "now",
       "payload": {
         "kind": "agentTurn",
-        "message": "SMS monitor.\n1. Read MEMORY.md Active Tasks. Find tasks with sms-watch fields.\n2. For each: `python3 \"$OPENCLAW_REPO/scripts/imessage.py\" read \"<number>\" --limit 30`\n3. Compare to last-sms-baseline. Update last-sms-scan in MEMORY.\n\nOnly send a WhatsApp to +19179752041 (Igor) if there is a NEW INBOUND vendor reply since baseline. If nothing new, STOP — do not send any message at all.\n\nQuiet hours 11 PM–7 AM: defer to morning briefing.",
+        "message": "SMS monitor.\n1. Read MEMORY.md Active Tasks. Find tasks with sms-watch fields. If none, STOP.\n2. For each: `python3 \"$OPENCLAW_REPO/scripts/imessage.py\" read \"<number>\" --limit 30`\n3. If the command prints a Full Disk Access error, STOP immediately — the blocker is already in MEMORY § System Issues; do NOT write per-task error bullets.\n4. On success: compare to last-sms-baseline. Only update MEMORY (last-sms-baseline) when there is a NEW INBOUND vendor reply; do not write last-sms-scan timestamps.\n\nOnly send a WhatsApp to +19179752041 (Igor) on a NEW INBOUND vendor reply. If nothing new, STOP — do not send any message.\n\nQuiet hours 11 PM–7 AM: defer to morning briefing.",
         "timeoutSeconds": 300
       },
       "delivery": { "mode": "none" }
