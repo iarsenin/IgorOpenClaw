@@ -849,6 +849,103 @@ def html_paragraphs(text: str) -> str:
     return "\n".join(parts)
 
 
+SPEAKER_LABEL_RE = re.compile(r"^([A-Z][A-Za-z0-9 .'\-&]{0,40}):\s+")
+
+
+def _split_long_paragraph(paragraph: str, target_chars: int = 500) -> list[str]:
+    if len(paragraph) <= target_chars * 1.6:
+        return [paragraph]
+    sentences = re.split(r"(?<=[.!?])\s+(?=[A-Z\"'“‘])", paragraph)
+    if len(sentences) <= 1:
+        return [paragraph]
+    chunks: list[str] = []
+    current = ""
+    for sentence in sentences:
+        if not current:
+            current = sentence
+        elif len(current) + 1 + len(sentence) <= target_chars:
+            current = f"{current} {sentence}"
+        else:
+            chunks.append(current.strip())
+            current = sentence
+    if current:
+        chunks.append(current.strip())
+    return [c for c in chunks if c]
+
+
+def paragraphize_transcript(text: str) -> list[str]:
+    text = (text or "").strip()
+    if not text:
+        return []
+    if "\n\n" in text:
+        paragraphs = [re.sub(r"[ \t]*\n[ \t]*", " ", p).strip() for p in text.split("\n\n")]
+        paragraphs = [re.sub(r"\s+", " ", p) for p in paragraphs if p]
+    else:
+        normalized = normalize_subtitle_transcript_text(text)
+        paragraphs = [p.strip() for p in normalized.split("\n\n") if p.strip()]
+    if not paragraphs:
+        paragraphs = [re.sub(r"\s+", " ", text).strip()]
+    expanded: list[str] = []
+    for paragraph in paragraphs:
+        expanded.extend(_split_long_paragraph(paragraph))
+    return expanded
+
+
+def format_transcript_html(text: str) -> str:
+    parts: list[str] = []
+    for paragraph in paragraphize_transcript(text):
+        match = SPEAKER_LABEL_RE.match(paragraph)
+        if match:
+            label = match.group(1)
+            rest = paragraph[match.end():]
+            parts.append(
+                f"<p><strong>{html.escape(label)}:</strong> {html.escape(rest)}</p>"
+            )
+        else:
+            parts.append(f"<p>{html.escape(paragraph)}</p>")
+    return "\n".join(parts) if parts else "<p><em>Transcript is empty.</em></p>"
+
+
+def build_standalone_transcript_html(*, title: str, metadata: dict, transcript_text: str) -> str:
+    safe_title = html.escape(title or "Transcript")
+    meta_rows = []
+    source_url = metadata.get("resolved_url") or metadata.get("original_url") or ""
+    if source_url:
+        esc = html.escape(source_url)
+        meta_rows.append(f'<p><strong>Source:</strong> <a href="{esc}">{esc}</a></p>')
+    who = metadata.get("speaker_names") or metadata.get("author") or metadata.get("feed_title")
+    if isinstance(who, list):
+        who = ", ".join(who)
+    if who:
+        meta_rows.append(f"<p><strong>Who:</strong> {html.escape(str(who))}</p>")
+    if metadata.get("published_at"):
+        meta_rows.append(f"<p><strong>Published:</strong> {html.escape(str(metadata['published_at']))}</p>")
+    if metadata.get("duration_seconds"):
+        meta_rows.append(
+            f"<p><strong>Duration:</strong> {int(metadata['duration_seconds'])} seconds</p>"
+        )
+    head = (
+        "<!doctype html><html><head>"
+        "<meta charset=\"utf-8\">"
+        f"<title>{safe_title}</title>"
+        "<style>"
+        "body{font-family:Georgia,'Times New Roman',serif;max-width:740px;margin:2em auto;"
+        "padding:0 1em;line-height:1.6;color:#111;font-size:17px;}"
+        "h1{font-family:Arial,sans-serif;font-size:1.4em;margin:0 0 .5em;}"
+        ".meta{color:#555;font-family:Arial,sans-serif;font-size:.9em;margin-bottom:1.5em;}"
+        ".meta p{margin:.25em 0;}"
+        "p{margin:0 0 1em;}"
+        "strong{color:#000;}"
+        "</style></head><body>"
+    )
+    body = (
+        f"<h1>{safe_title}</h1>"
+        f"<div class=\"meta\">{''.join(meta_rows)}</div>"
+        f"{format_transcript_html(transcript_text)}"
+    )
+    return head + body + "</body></html>"
+
+
 def build_html_email_body(
     *,
     summary: dict,
@@ -900,17 +997,23 @@ def build_html_email_body(
         body_parts.extend(
             [
                 "<p><strong>Full transcript:</strong></p>",
-                f"<pre style=\"white-space: pre-wrap; font-family: Arial, sans-serif;\">{html.escape(transcript_text.strip())}</pre>",
+                "<div style=\"font-family: Georgia, 'Times New Roman', serif; font-size: 15px; line-height: 1.6;\">",
+                format_transcript_html(transcript_text),
+                "</div>",
             ]
         )
     else:
-        body_parts.append("<p><strong>Full transcript is attached as a text file.</strong></p>")
+        body_parts.append(
+            "<p><strong>Full transcript is attached (.html for reading, .txt for raw).</strong></p>"
+        )
         if transcript_source != "youtube-subtitles":
             excerpt = format_transcript_excerpt(transcript_text, max_chars=5000)
             body_parts.extend(
                 [
                     "<p><strong>Transcript excerpt:</strong></p>",
-                    html_paragraphs(excerpt),
+                    "<div style=\"font-family: Georgia, 'Times New Roman', serif; font-size: 15px; line-height: 1.6;\">",
+                    format_transcript_html(excerpt),
+                    "</div>",
                 ]
             )
 
@@ -1650,6 +1753,17 @@ def send_email(
         maintype="text",
         subtype="plain",
         filename=transcript_path.name,
+    )
+    transcript_html = build_standalone_transcript_html(
+        title=str(metadata.get("title") or "Transcript"),
+        metadata=metadata,
+        transcript_text=transcript_text,
+    )
+    msg.add_attachment(
+        transcript_html.encode("utf-8"),
+        maintype="text",
+        subtype="html",
+        filename=transcript_path.with_suffix(".html").name,
     )
 
     with smtplib.SMTP_SSL("smtp.gmail.com", 465, timeout=TIMEOUT) as smtp:
