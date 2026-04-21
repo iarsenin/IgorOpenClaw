@@ -77,6 +77,8 @@ IgorOpenClaw/
     ├── imessage.py        ← iMessage/SMS read & send helper (chat.db + AppleScript)
     ├── whatsapp.py        ← WhatsApp bridge message reader (parses gateway logs)
     ├── vapi-call.py       ← Outbound/inbound phone calls via Vapi AI voice agent
+    │                        (outbound dial auto-spawns detached watcher that WhatsApps
+    │                        a call summary to owner within ~30s of call end)
     ├── api-spend-check.py ← Daily API spend report (OpenAI, Vapi, Cursor status)
     ├── system-health-check.py ← Gateway/disk/error health check (silent when healthy)
     ├── transcribe-url.py  ← URL transcript + summary + email pipeline

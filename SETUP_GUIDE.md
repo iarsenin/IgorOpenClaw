@@ -655,9 +655,13 @@ python3 "$REPO/scripts/vapi-call.py" status <call_id>
 #### 8.5.7 How it works (for future maintainers)
 
 ```
-Outbound:  Clawd → vapi-call.py → POST api.vapi.ai/call → Riley → recipient
+Outbound:  Clawd → vapi-call.py call → POST api.vapi.ai/call → Riley → recipient
+           → vapi-call.py call also spawns a detached watcher that polls the call,
+             then `openclaw message send` pushes a summary to Igor on WhatsApp
+             within ~30s of the call ending
 Inbound:   caller → +19179628631 → Vapi → Riley answers, takes message
-Polling:   cron (every 30 min) → vapi-call.py inbound-check → WhatsApp alert to Igor
+Polling:   cron (every 30 min) → vapi-call.py inbound-check → WhatsApp alert
+           (safety net for watcher failures + catches new inbound calls)
 ```
 
 - `scripts/vapi-call.py` is a standalone Python script (no pip dependencies)
