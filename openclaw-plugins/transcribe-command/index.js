@@ -11,6 +11,63 @@ const DEFAULT_EMAIL = "igor.arsenin@gmail.com";
 const COMMAND_TIMEOUT_MS = 15 * 60 * 1000;
 const PYTHON_IMPORT_CHECK = "import requests, bs4; print('ok')";
 
+const OPENCLAW_CLI_CANDIDATES = [
+    "/opt/homebrew/bin/openclaw",
+    "/usr/local/bin/openclaw",
+];
+
+function resolveOpenclawCli() {
+    for (const candidate of OPENCLAW_CLI_CANDIDATES) {
+        if (fs.existsSync(candidate)) {
+            return candidate;
+        }
+    }
+    return "openclaw";
+}
+
+// Quick URL classification — do we expect a pre-made transcript (fast path,
+// usually seconds) or do we have to download audio and send it to a model
+// (slow path, several minutes)?
+function estimateTranscribeSpeed(url) {
+    const lc = url.toLowerCase();
+    if (/(?:^|\/\/)(?:www\.)?(?:youtube\.com|youtu\.be|m\.youtube\.com)\b/u.test(lc)) {
+        return { fast: true };
+    }
+    return {
+        fast: false,
+        ackText:
+            "Got it — transcribing now. This source has no pre-made captions, so I'll "
+            + "download the audio and run it through Gemini. Expect ~3–10 min depending "
+            + "on episode length. You'll get the email + a summary here when it's done.",
+    };
+}
+
+function sendInterimAck(text, target) {
+    if (!text || !target) {
+        return false;
+    }
+    try {
+        const child = spawn(
+            resolveOpenclawCli(),
+            [
+                "message", "send",
+                "--channel", "whatsapp",
+                "--target", target,
+                "--message", text,
+            ],
+            {
+                cwd: REPO_DIR,
+                stdio: "ignore",
+                detached: true,
+            },
+        );
+        child.unref();
+        return true;
+    } catch {
+        return false;
+    }
+}
+
 function parseDotEnv(dotenvPath) {
     const env = {};
     if (!fs.existsSync(dotenvPath)) {
@@ -178,6 +235,16 @@ export default {
                     handled: true,
                     text: "The transcription helper is missing from the repo checkout on this machine."
                 };
+            }
+            const speed = estimateTranscribeSpeed(url);
+            if (!speed.fast) {
+                const target = sanitizeText(event.senderId) || sanitizeText(event.from);
+                const sent = sendInterimAck(speed.ackText, target);
+                if (sent) {
+                    api.logger.info?.(`transcribe-command sent slow-path ETA ack for ${url}`);
+                } else {
+                    api.logger.warn?.(`transcribe-command could not send ETA ack for ${url} (no target or CLI)`);
+                }
             }
             try {
                 const result = await runHelper(url);
