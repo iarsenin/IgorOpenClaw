@@ -637,6 +637,154 @@ def normalize_transcript_speakers(state: RunState) -> None:
     state.notes.append(f"Relabeled transcript speakers: {', '.join(f'{k}->{v}' for k, v in sorted(speaker_map.items()))}")
 
 
+# ---------------------------------------------------------------------------
+# Speaker-tagging post-pass (text-only, via Gemini)
+# ---------------------------------------------------------------------------
+# Gemini's audio transcription gives back a flat wall of text with no speaker
+# labels. `normalize_transcript_speakers` only helps when `Speaker N:` labels
+# are already present. For the common case (interview-format podcast, no
+# labels), we do a single text-only Gemini call that asks the model to split
+# the transcript into paragraphs at speaker turns and prepend each paragraph
+# with the inferred speaker's name/role based on contextual cues (intros,
+# direct address, question-vs-answer cadence) plus the podcast metadata.
+#
+# Heuristic quality: good for clean Q&A interviews, occasionally flips during
+# fast back-and-forth or debate. If the model's output looks broken (too
+# short, no labels produced, or labels not matching the allowed list), we
+# discard it and keep the original unlabeled transcript.
+
+DIARIZE_INPUT_LIMIT = 180_000  # ~45k tokens — comfortably inside flash-lite context
+DIARIZE_MIN_OUTPUT_RATIO = 0.70
+
+
+def _transcript_already_has_speaker_labels(transcript_text: str) -> bool:
+    # Sample the first ~2000 non-blank lines — if even a handful start with a
+    # speaker-label pattern (`Name:`), assume the transcript is already tagged
+    # and skip the post-pass.
+    hits = 0
+    for line in transcript_text.splitlines():
+        stripped = line.strip()
+        if not stripped:
+            continue
+        if SPEAKER_LABEL_RE.match(stripped):
+            hits += 1
+            if hits >= 3:
+                return True
+    return False
+
+
+def diarize_transcript_with_gemini(state: RunState) -> None:
+    transcript = state.transcript_text or ""
+    if not transcript.strip():
+        return
+    if _transcript_already_has_speaker_labels(transcript):
+        return
+    if state.transcript_source == "youtube-subtitles":
+        # Auto-generated YT captions don't contain speaker-distinguishing cues.
+        return
+
+    gemini_key = read_env_key("GOOGLE_API_KEY", "GEMINI_API_KEY")
+    if not gemini_key:
+        return
+
+    # For very long transcripts, send the head + tail so Gemini can see the
+    # outro sign-offs too. In practice 180k chars covers the full text for
+    # almost every podcast.
+    if len(transcript) <= DIARIZE_INPUT_LIMIT:
+        transcript_for_model = transcript
+        truncated = False
+    else:
+        head = transcript[: DIARIZE_INPUT_LIMIT * 3 // 4]
+        tail = transcript[-DIARIZE_INPUT_LIMIT // 4 :]
+        transcript_for_model = f"{head}\n\n[... transcript continues ...]\n\n{tail}"
+        truncated = True
+
+    meta_view = {
+        k: state.metadata.get(k)
+        for k in ("title", "author", "feed_title", "description", "platform")
+        if state.metadata.get(k)
+    }
+
+    prompt = textwrap.dedent(
+        f"""
+        You are tagging speakers in an already-produced transcript.
+
+        Goal: break the transcript into paragraphs at speaker changes and
+        prepend each paragraph with the speaker's name followed by a colon
+        and a space (e.g. `Ezra Klein: ...`).
+
+        STRICT RULES:
+        - Do NOT change, paraphrase, reorder, summarize, or omit any spoken
+          words. Every original word must appear exactly once in the output.
+        - Only add speaker labels and paragraph breaks.
+        - Infer speaker identity from contextual cues: host introducing
+          themselves or the guest, direct address ("So, Jane, ..."),
+          interviewer-style questions vs. expert-style answers, and the
+          metadata below. The podcast `author` is usually the host.
+        - If an ad / bumper / sponsor read appears, label it `Advertisement:`
+          or `Announcer:` as appropriate.
+        - If you genuinely cannot tell who is speaking for a stretch, use
+          `Speaker A:` / `Speaker B:` consistently rather than guessing.
+        - Output format: plain text. One paragraph per speaker turn. Each
+          paragraph starts with `<Name>: ` followed by the verbatim words.
+          No markdown, no commentary, no preamble, no closing notes.
+
+        Metadata:
+        {json.dumps(meta_view, ensure_ascii=False, indent=2)}
+
+        Transcript to tag{' (truncated with head+tail; label what you can see)' if truncated else ''}:
+        ---
+        {transcript_for_model}
+        ---
+        """
+    ).strip()
+
+    try:
+        result = gemini_generate([{"text": prompt}], api_key=gemini_key, temperature=0.0)
+    except Exception as exc:
+        state.warnings.append(f"Speaker diarization post-pass failed: {exc}")
+        return
+
+    labeled = (result or "").strip()
+    if not labeled:
+        state.warnings.append("Speaker diarization post-pass returned empty output; keeping unlabeled transcript")
+        return
+
+    # Sanity checks: output should be roughly the same length as the input,
+    # and should actually contain speaker labels. Otherwise discard.
+    if len(labeled) < len(transcript_for_model) * DIARIZE_MIN_OUTPUT_RATIO:
+        state.warnings.append(
+            f"Speaker diarization post-pass output was too short "
+            f"({len(labeled)} vs {len(transcript_for_model)} input); keeping unlabeled transcript"
+        )
+        return
+    if not _transcript_already_has_speaker_labels(labeled):
+        state.warnings.append("Speaker diarization post-pass did not emit speaker labels; keeping unlabeled transcript")
+        return
+    if truncated:
+        # We only sent head+tail to the model; don't overwrite the full text.
+        state.warnings.append("Speaker diarization post-pass skipped: transcript exceeded model input budget")
+        return
+
+    state.transcript_text = labeled
+    # Harvest unique speaker names for metadata so the summary + email can
+    # display them.
+    seen_names: list[str] = []
+    for line in labeled.splitlines():
+        stripped = line.strip()
+        if not stripped:
+            continue
+        match = SPEAKER_LABEL_RE.match(stripped)
+        if not match:
+            continue
+        name = match.group(1).strip()
+        if name and name not in seen_names and not name.lower().startswith(("speaker ", "unknown")):
+            seen_names.append(name)
+    if seen_names:
+        state.metadata["speaker_names"] = seen_names
+    state.notes.append(f"Tagged speakers via Gemini post-pass ({len(seen_names)} identified)")
+
+
 def normalize_subtitle_transcript_text(transcript_text: str) -> str:
     lines = []
     for raw_line in transcript_text.splitlines():
@@ -1005,7 +1153,7 @@ def build_html_email_body(
         )
     else:
         body_parts.append(
-            "<p><strong>Full transcript is attached (.html for reading, .txt for raw).</strong></p>"
+            "<p><strong>Full transcript is attached as an HTML file.</strong></p>"
         )
         if transcript_source != "youtube-subtitles":
             excerpt = format_transcript_excerpt(transcript_text, max_chars=5000)
@@ -1725,7 +1873,7 @@ def send_email(
     if should_inline_transcript(transcript_text, transcript_source) and len(transcript_text) <= TRANSCRIPT_INLINE_MAX:
         body.extend(["Full transcript:", transcript_text.strip()])
     else:
-        body.extend(["Full transcript is attached as a text file."])
+        body.extend(["Full transcript is attached as an HTML file."])
         if transcript_source != "youtube-subtitles":
             body.extend(
                 [
@@ -1748,12 +1896,6 @@ def send_email(
             transcript_source=transcript_source,
         ),
         subtype="html",
-    )
-    msg.add_attachment(
-        transcript_text.encode("utf-8"),
-        maintype="text",
-        subtype="plain",
-        filename=transcript_path.name,
     )
     transcript_html = build_standalone_transcript_html(
         title=str(metadata.get("title") or "Transcript"),
@@ -2121,6 +2263,7 @@ def run_pipeline(url: str, *, email_to: str | None, skip_email: bool) -> dict:
                 state.transcript_text = normalized
                 state.notes.append("Normalized YouTube subtitle transcript into readable paragraphs")
         normalize_transcript_speakers(state)
+        diarize_transcript_with_gemini(state)
         write_transcript(state)
 
     summary = summarize(state)

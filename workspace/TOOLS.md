@@ -172,8 +172,8 @@ Ask Igor: *"May Riley leave your callback number?"* Encode verbatim in task inst
 1. **Resolve the number yourself (autonomous)** — `contacts.py search <name>`, then `gog contacts ls`, then `imessage.py search`, then `email-search.py`. Only ask Igor for the number if all four return nothing. Never ask Igor for a number you haven't tried to look up.
 2. Draft call plan + ask about callback → get user approval (one y/n line).
 3. `vapi-call.py call <number> <instructions>` (include goals + YES/NO callback lines).
-4. Async: wait 30s, poll `status <call_id>` every 60s until `ended`.
-5. Read transcript + report, summarize for user.
+4. The `call` command auto-spawns a background watcher. Reply to Igor with something like: *"Calling <name> now at <number>. I'll WhatsApp you a summary when the call ends (~2–5 min)."* Then END your turn. **Do NOT poll `status` in-thread** — the watcher delivers the summary proactively, and holding the turn open for minutes breaks on compaction/budget.
+5. The watcher will send Igor a `📞 Call ended` WhatsApp message with duration, ended-reason, cost, and Vapi's summary within ~30s of the call ending. If the watcher fails to spawn (rare), the 30-min `inbound-call-check` cron is the fallback.
 
 ### Riley has NO shared context
 

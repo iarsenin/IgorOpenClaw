@@ -9,9 +9,16 @@ See config/riley-voice-behavior.md and workspace/TOOLS.md.
 
 Usage:
     vapi-call.py call <number> <task_instructions>   Make an outbound call
+                                                     (auto-spawns a detached watcher
+                                                     that WhatsApps a summary when
+                                                     the call ends).
     vapi-call.py status <call_id>                    Check call status/transcript
     vapi-call.py list [--limit N]                    List recent calls
     vapi-call.py inbound-check                       Check for new inbound calls (for cron)
+    vapi-call.py watch <call_id>                     Poll until call ends, then send
+                                                     summary to owner on WhatsApp and
+                                                     remove entry from pending queue.
+                                                     (internal; spawned by `call`)
 
 Environment variables (from .env):
     VAPI_API_KEY          Private API key
@@ -22,11 +29,25 @@ Environment variables (from .env):
 import json
 import os
 import ssl
+import subprocess
 import sys
+import time
 import urllib.request
 import urllib.error
 
 API_BASE = "https://api.vapi.ai"
+
+# WhatsApp E.164 target for proactive call-summary delivery. Matches the
+# allowlist in config/openclaw.json.template and workspace/USER.md.
+OWNER_WHATSAPP_TARGET = "+19179752041"
+
+# Candidate paths for the `openclaw` CLI used by the detached watcher to send
+# the call summary back on WhatsApp. First existing path wins; bare name is
+# the final fallback.
+OPENCLAW_CLI_CANDIDATES = (
+    "/opt/homebrew/bin/openclaw",
+    "/usr/local/bin/openclaw",
+)
 
 # Appended to every outbound call's assistantOverrides system message (see
 # config/riley-voice-behavior.md — keep in sync).
@@ -139,13 +160,53 @@ def cmd_call(number, task_instructions):
     status = result.get("status", "unknown")
 
     _add_pending(call_id, number)
+    watcher_ok = _spawn_watcher(call_id)
 
     print(f"Call initiated!")
     print(f"  Call ID: {call_id}")
     print(f"  Status: {status}")
     print(f"  To: {number}")
-    print(f"\nCall will be tracked automatically. The next inbound-check cycle will report the outcome.")
+    if watcher_ok:
+        print(
+            "\nA watcher is polling this call in the background and will "
+            "WhatsApp you a summary within ~30s of the call ending. "
+            "(The 30-min inbound-check cron is still the fallback.)"
+        )
+    else:
+        print(
+            "\nWARN: could not spawn the call watcher. Summary will arrive "
+            "from the next inbound-check cron cycle (0–30 min)."
+        )
     return call_id
+
+
+def _spawn_watcher(call_id):
+    """Fork a detached watcher that polls this call and delivers the summary.
+
+    Uses start_new_session=True so the subprocess survives this process
+    exiting (the agent's exec tool reaps stdin/stdout when the caller
+    returns). Stdio is redirected to /dev/null; progress is written to
+    WATCHER_LOG.
+    """
+    if not call_id or call_id == "unknown":
+        return False
+    script = os.path.abspath(__file__)
+    try:
+        devnull_r = open(os.devnull, "rb")
+        devnull_w = open(os.devnull, "ab")
+        subprocess.Popen(
+            [sys.executable, script, "watch", call_id],
+            cwd=_REPO_ROOT,
+            stdin=devnull_r,
+            stdout=devnull_w,
+            stderr=devnull_w,
+            start_new_session=True,
+            close_fds=True,
+        )
+        return True
+    except OSError as e:
+        _watcher_log(f"spawn_watcher error call_id={call_id}: {e}")
+        return False
 
 
 def cmd_status(call_id):
@@ -327,6 +388,246 @@ def _save_pending(entries):
             }) + "\n")
 
 
+def _remove_pending(call_id):
+    """Drop a call from the pending-outbound queue (idempotent)."""
+    if not call_id:
+        return
+    entries = _load_pending()
+    remaining = [e for e in entries if e.get("call_id") != call_id]
+    if len(remaining) != len(entries):
+        _save_pending(remaining)
+
+
+def _mark_seen(call_id):
+    """Add a call_id to the 'already reported' set so cron won't re-report."""
+    if not call_id:
+        return
+    seen = _load_seen()
+    if call_id in seen:
+        return
+    seen.add(call_id)
+    _save_seen(seen)
+
+
+def _resolve_openclaw_cli():
+    for candidate in OPENCLAW_CLI_CANDIDATES:
+        if os.path.exists(candidate):
+            return candidate
+    return "openclaw"
+
+
+# Watcher log lives next to the other runtime state on local disk. Bounded
+# size via periodic truncation in daily-restart.sh is fine; nothing here
+# writes more than a few lines per call.
+WATCHER_LOG = os.path.join(_STATE_DIR, "vapi-watcher.log")
+
+
+def _watcher_log(msg):
+    try:
+        with open(WATCHER_LOG, "a") as f:
+            f.write(f"{time.strftime('%Y-%m-%d %H:%M:%S')} {msg}\n")
+    except OSError:
+        pass
+
+
+def _format_duration(seconds):
+    try:
+        seconds = int(round(float(seconds)))
+    except (TypeError, ValueError):
+        return None
+    if seconds < 0:
+        return None
+    if seconds < 60:
+        return f"{seconds}s"
+    minutes, rem = divmod(seconds, 60)
+    if minutes < 60:
+        return f"{minutes}m {rem:02d}s"
+    hours, minutes = divmod(minutes, 60)
+    return f"{hours}h {minutes:02d}m"
+
+
+def _first_last_turns(call_data, max_turns=6):
+    """Fallback text when Vapi's analysis.summary is empty: first/last turns."""
+    messages = call_data.get("messages") or []
+    turns = []
+    for msg in messages:
+        text = (msg.get("message") or msg.get("content") or "").strip()
+        if not text:
+            continue
+        role = msg.get("role", "?")
+        label = "Riley" if role in ("assistant", "bot") else "Caller"
+        turns.append(f"{label}: {text}")
+    if not turns:
+        transcript = (call_data.get("transcript") or "").strip()
+        return transcript[:500] if transcript else ""
+    if len(turns) <= max_turns:
+        return "\n".join(turns)
+    half = max_turns // 2
+    head = turns[:half]
+    tail = turns[-(max_turns - half):]
+    return "\n".join(head + ["…"] + tail)
+
+
+def _build_summary_message(call_id, to_number, call_data):
+    status = call_data.get("status", "unknown")
+    ended_reason = (call_data.get("endedReason") or "").strip()
+    duration_str = _format_duration(call_data.get("duration"))
+    cost = call_data.get("cost")
+    analysis = call_data.get("analysis") or {}
+    summary = (analysis.get("summary") or "").strip()
+    structured = analysis.get("structuredData") or {}
+    success = analysis.get("successEvaluation")
+
+    lines = [f"📞 Call ended — {to_number or 'unknown'}"]
+    meta_bits = []
+    if duration_str:
+        meta_bits.append(duration_str)
+    if ended_reason:
+        meta_bits.append(ended_reason)
+    if isinstance(cost, (int, float)):
+        meta_bits.append(f"${cost:.2f}")
+    if meta_bits:
+        lines.append(" · ".join(meta_bits))
+    lines.append("")
+
+    if summary:
+        lines.append(summary)
+    else:
+        fallback = _first_last_turns(call_data)
+        if fallback:
+            lines.append("(Vapi summary not available — transcript excerpt:)")
+            lines.append(fallback)
+        else:
+            lines.append(f"(No summary or transcript available. Final status: {status}.)")
+
+    if structured:
+        lines.append("")
+        lines.append("Structured:")
+        for key, val in list(structured.items())[:6]:
+            lines.append(f"• {key}: {val}")
+
+    if success not in (None, ""):
+        lines.append("")
+        lines.append(f"Outcome: {success}")
+
+    lines.append("")
+    lines.append(f"Call ID: {call_id}")
+
+    msg = "\n".join(lines).strip()
+    # WhatsApp text cap is generous (~65k chars), but keep messages readable.
+    if len(msg) > 3500:
+        msg = msg[:3400].rstrip() + "\n…(truncated)"
+    return msg
+
+
+def _send_whatsapp_summary(text):
+    """Deliver the summary to the owner via `openclaw message send`."""
+    cli = _resolve_openclaw_cli()
+    try:
+        proc = subprocess.run(
+            [
+                cli, "message", "send",
+                "--channel", "whatsapp",
+                "--target", OWNER_WHATSAPP_TARGET,
+                "--message", text,
+            ],
+            cwd=_REPO_ROOT,
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+    except (OSError, subprocess.TimeoutExpired) as e:
+        _watcher_log(f"whatsapp send error: {e}")
+        return False
+    if proc.returncode != 0:
+        _watcher_log(
+            f"whatsapp send exited code={proc.returncode} "
+            f"stderr={(proc.stderr or '').strip()[:300]}"
+        )
+        return False
+    return True
+
+
+# Watcher tuning. Vapi calls are typically <10 min. We cap at 30 min wall
+# time so a stuck/forgotten watcher can't linger forever, and poll every
+# WATCH_POLL_SECONDS seconds.
+WATCH_MAX_WALL_SECONDS = 30 * 60
+WATCH_POLL_SECONDS = 20
+WATCH_POST_END_DELAY_SECONDS = 15  # wait for analysis.summary to populate
+
+
+def cmd_watch(call_id):
+    """Poll a single outbound call until it ends, then deliver summary.
+
+    Spawned detached by `cmd_call` so feedback reaches Igor within ~30s of
+    call end without relying on the agent staying alive. Idempotent: if the
+    call is already gone from the pending queue (e.g. cron settled it first)
+    and already marked seen, we just exit.
+    """
+    call_id = (call_id or "").strip()
+    if not call_id:
+        print("ERROR: watch requires a call_id", file=sys.stderr)
+        sys.exit(2)
+
+    _watcher_log(f"watch start call_id={call_id}")
+    deadline = time.monotonic() + WATCH_MAX_WALL_SECONDS
+    to_number = "?"
+    consecutive_errors = 0
+
+    while True:
+        if time.monotonic() > deadline:
+            _watcher_log(f"watch timeout call_id={call_id} — leaving for cron fallback")
+            return
+
+        try:
+            call_data = api_request("GET", f"/call/{call_id}")
+            consecutive_errors = 0
+        except VapiError as e:
+            consecutive_errors += 1
+            _watcher_log(f"watch poll error #{consecutive_errors} call_id={call_id}: {e}")
+            # Back off on repeated errors but keep trying until the deadline;
+            # if Vapi is flat-out unreachable, the 30-min cron will retry.
+            if consecutive_errors >= 10:
+                _watcher_log(f"watch giving up after 10 errors call_id={call_id}")
+                return
+            time.sleep(min(WATCH_POLL_SECONDS * 2, 60))
+            continue
+
+        if to_number == "?":
+            customer = call_data.get("customer") or {}
+            to_number = customer.get("number") or to_number
+
+        status = call_data.get("status", "unknown")
+        if status != "ended":
+            time.sleep(WATCH_POLL_SECONDS)
+            continue
+
+        # Call ended — wait briefly for post-call analysis to populate, then
+        # re-fetch so we can include analysis.summary / structuredData.
+        time.sleep(WATCH_POST_END_DELAY_SECONDS)
+        try:
+            call_data = api_request("GET", f"/call/{call_id}")
+        except VapiError as e:
+            _watcher_log(f"watch post-end refetch error call_id={call_id}: {e}")
+
+        summary_text = _build_summary_message(call_id, to_number, call_data)
+        sent = _send_whatsapp_summary(summary_text)
+        if sent:
+            _watcher_log(f"watch delivered call_id={call_id} ({len(summary_text)} chars)")
+            # Prevent the 30-min inbound-check cron from re-reporting the
+            # same call. Cron already filters outbound from the 'new inbound'
+            # list, but we drop the pending entry here too as the primary
+            # dedupe path.
+            _remove_pending(call_id)
+            _mark_seen(call_id)
+        else:
+            _watcher_log(
+                f"watch could NOT deliver call_id={call_id} — leaving pending "
+                "for cron fallback"
+            )
+        return
+
+
 def cmd_inbound_check():
     """Check for new inbound calls AND completed outbound calls pending report."""
     try:
@@ -494,6 +795,11 @@ def main():
         cmd_list(limit)
     elif cmd == "inbound-check":
         cmd_inbound_check()
+    elif cmd == "watch":
+        if len(sys.argv) < 3:
+            print("Usage: vapi-call.py watch <call_id>", file=sys.stderr)
+            sys.exit(1)
+        cmd_watch(sys.argv[2])
     else:
         print(f"Unknown command: {cmd}")
         print(__doc__)

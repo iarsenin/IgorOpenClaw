@@ -42,9 +42,33 @@ function estimateTranscribeSpeed(url) {
     };
 }
 
-function sendInterimAck(text, target) {
-    if (!text || !target) {
-        return false;
+// WhatsApp senderId is a JID (`19179752041@s.whatsapp.net` or
+// `19179752041@c.us`). `openclaw message send --target` expects E.164
+// (`+19179752041`). Normalize so the ack actually lands.
+function normalizeWhatsappTarget(raw) {
+    const value = typeof raw === "string" ? raw.trim() : "";
+    if (!value) {
+        return null;
+    }
+    if (value.startsWith("+") && /^\+\d{6,15}$/u.test(value)) {
+        return value;
+    }
+    const atIdx = value.indexOf("@");
+    const localPart = atIdx === -1 ? value : value.slice(0, atIdx);
+    const digits = localPart.replace(/[^\d]/gu, "");
+    if (!digits || digits.length < 6 || digits.length > 15) {
+        return null;
+    }
+    return `+${digits}`;
+}
+
+function sendInterimAck(text, rawTarget, logger) {
+    if (!text) {
+        return { ok: false, reason: "no-text" };
+    }
+    const target = normalizeWhatsappTarget(rawTarget);
+    if (!target) {
+        return { ok: false, reason: `unparseable-target:${rawTarget ?? "<none>"}` };
     }
     try {
         const child = spawn(
@@ -57,14 +81,24 @@ function sendInterimAck(text, target) {
             ],
             {
                 cwd: REPO_DIR,
-                stdio: "ignore",
-                detached: true,
+                stdio: ["ignore", "pipe", "pipe"],
             },
         );
-        child.unref();
-        return true;
-    } catch {
-        return false;
+        let stderr = "";
+        child.stderr?.on("data", (chunk) => { stderr += String(chunk); });
+        child.on("error", (err) => {
+            logger?.warn?.(`transcribe-command ack spawn error: ${err.message}`);
+        });
+        child.on("close", (code) => {
+            if (code !== 0) {
+                logger?.warn?.(`transcribe-command ack exited code=${code} target=${target} stderr=${stderr.trim().slice(0, 300)}`);
+            } else {
+                logger?.info?.(`transcribe-command ack delivered to ${target}`);
+            }
+        });
+        return { ok: true, target };
+    } catch (error) {
+        return { ok: false, reason: error instanceof Error ? error.message : String(error) };
     }
 }
 
@@ -238,12 +272,12 @@ export default {
             }
             const speed = estimateTranscribeSpeed(url);
             if (!speed.fast) {
-                const target = sanitizeText(event.senderId) || sanitizeText(event.from);
-                const sent = sendInterimAck(speed.ackText, target);
-                if (sent) {
-                    api.logger.info?.(`transcribe-command sent slow-path ETA ack for ${url}`);
+                const rawTarget = sanitizeText(event.senderId) || sanitizeText(event.from);
+                const ack = sendInterimAck(speed.ackText, rawTarget, api.logger);
+                if (ack.ok) {
+                    api.logger.info?.(`transcribe-command queued slow-path ETA ack for ${url} → ${ack.target}`);
                 } else {
-                    api.logger.warn?.(`transcribe-command could not send ETA ack for ${url} (no target or CLI)`);
+                    api.logger.warn?.(`transcribe-command could not queue ETA ack for ${url}: ${ack.reason}`);
                 }
             }
             try {

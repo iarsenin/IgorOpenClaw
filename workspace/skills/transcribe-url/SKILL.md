@@ -44,8 +44,12 @@ The helper script:
    - canonical provider transcript APIs exposed by the feed/page
    - Gemini audio transcription when compatible
    - OpenAI audio transcription as fallback
-6. Cleans up generic diarization labels like `Speaker 1` into real names when the transcript makes speaker identity clear.
-6. Builds:
+6. Tags speakers: cleans up `Speaker 1` labels into real names, and for
+   untagged transcripts runs a Gemini text-only post-pass that splits the
+   transcript into per-speaker paragraphs (`Ezra Klein: ...`) using
+   contextual cues + metadata. Falls back to the unlabeled transcript if
+   the model output looks broken.
+7. Builds:
    - `whatsapp_summary`
    - `detailed_summary`
    - transcript artifact file
