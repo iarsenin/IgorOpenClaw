@@ -159,23 +159,31 @@ preserve_live_model() {
         return
     fi
 
-    python3 - <<'PY' "$source_config" "$target_config"
-import json
-import pathlib
-import sys
+    "$NODE_BIN" - "$source_config" "$target_config" <<'NODE'
+const fs = require("node:fs");
+const vm = require("node:vm");
 
-source = pathlib.Path(sys.argv[1])
-target = pathlib.Path(sys.argv[2])
-try:
-    previous = json.loads(source.read_text())
-    current = json.loads(target.read_text())
-    previous_model = previous.get("agents", {}).get("defaults", {}).get("model")
-    if previous_model is not None:
-        current.setdefault("agents", {}).setdefault("defaults", {})["model"] = previous_model
-        target.write_text(json.dumps(current, indent=2) + "\n")
-except Exception:
-    pass
-PY
+const [, , sourcePath, targetPath] = process.argv;
+
+function parseConfig(filePath) {
+  const text = fs.readFileSync(filePath, "utf8");
+  return vm.runInNewContext(`(${text}\n)`, Object.create(null));
+}
+
+try {
+  const previous = parseConfig(sourcePath);
+  const current = parseConfig(targetPath);
+  const previousModel = previous?.agents?.defaults?.model;
+  if (previousModel !== undefined) {
+    current.agents ??= {};
+    current.agents.defaults ??= {};
+    current.agents.defaults.model = previousModel;
+    fs.writeFileSync(targetPath, `${JSON.stringify(current, null, 2)}\n`);
+  }
+} catch (_error) {
+  // Best-effort only. Setup should continue even if the old config is malformed.
+}
+NODE
 
     echo "Preserved live agents.defaults.model from existing config"
 }

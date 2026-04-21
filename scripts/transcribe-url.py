@@ -1813,7 +1813,24 @@ def rewrite_whatsapp_summary(
         """
     ).strip()
 
-    result = gemini_generate([{"text": prompt}], api_key=api_key, temperature=0.1)
+    if not api_key:
+        return format_whatsapp_summary(
+            title=title,
+            who=who,
+            detailed_summary=detailed_summary,
+            fallback_summary=fallback_summary,
+        )
+
+    try:
+        result = gemini_generate([{"text": prompt}], api_key=api_key, temperature=0.1)
+    except Exception:
+        return format_whatsapp_summary(
+            title=title,
+            who=who,
+            detailed_summary=detailed_summary,
+            fallback_summary=fallback_summary,
+        )
+
     text = re.sub(r"^```(?:text)?\s*|\s*```$", "", str(result or "").strip(), flags=re.DOTALL)
     text = strip_basic_markdown(text)
     raw_lines = [line.strip() for line in text.splitlines() if line.strip()]
@@ -1917,10 +1934,13 @@ def send_email(
 def hydrate_metadata_from_html(url: str, html: str, state: RunState) -> dict:
     soup = BeautifulSoup(html, "html.parser")
     json_ld = extract_json_ld(soup)
+    page_title = None
+    if soup.title:
+        page_title = soup.title.get_text(strip=True)
     metadata = {
         "original_url": state.original_url,
         "resolved_url": url,
-        "title": first_meta(soup, prop="og:title") or soup.title.get_text(strip=True) if soup.title else None,
+        "title": first_meta(soup, prop="og:title") or page_title,
         "description": first_meta(soup, prop="og:description") or first_meta(soup, name="description"),
         "author": first_meta(soup, name="author"),
         "platform": urlparse(url).netloc.lower(),
@@ -2042,16 +2062,27 @@ def resolve_url(state: RunState) -> None:
         )
         state.accessible = True
         state.access_method = "yt-dlp"
+    resp: requests.Response | None = None
     try:
-        resp = fetch(url)
+        resp = fetch(url, stream=True)
         resp.raise_for_status()
         state.accessible = True
         state.access_method = state.access_method or "http"
-        state.metadata.update(hydrate_metadata_from_html(resp.url, resp.text, state))
+        content_type = resp.headers.get("Content-Type", "")
+        state.metadata.setdefault("resolved_url", resp.url)
+        state.metadata.setdefault("platform", urlparse(resp.url).netloc.lower())
+        if likely_direct_media(resp.url, content_type):
+            state.metadata["resolved_url"] = resp.url
+            state.metadata["platform"] = urlparse(resp.url).netloc.lower()
+        else:
+            state.metadata.update(hydrate_metadata_from_html(resp.url, resp.text, state))
     except requests.RequestException as exc:
         state.warnings.append(f"Direct fetch failed: {exc}")
         if not state.accessible:
             state.metadata.setdefault("resolved_url", url)
+    finally:
+        if resp is not None:
+            resp.close()
 
     state.metadata.setdefault("original_url", url)
     state.metadata.setdefault("resolved_url", url)

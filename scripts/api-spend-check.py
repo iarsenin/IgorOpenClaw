@@ -125,11 +125,10 @@ def openai_spend(admin_key, ctx):
 BROWSER_UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
 
 
-def vapi_spend(api_key, ctx):
+def vapi_spend(api_key, ctx, *, start, end):
     calls = fetch(
         "https://api.vapi.ai/call?limit=100",
         {"Authorization": f"Bearer {api_key}", "User-Agent": BROWSER_UA}, ctx)
-    cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
     total = 0.0
     count = 0
     for c in (calls if isinstance(calls, list) else []):
@@ -140,7 +139,7 @@ def vapi_spend(api_key, ctx):
             ts = datetime.fromisoformat(ts_str.replace("Z", "+00:00"))
         except ValueError:
             continue
-        if ts >= cutoff:
+        if start <= ts < end:
             total += float(c.get("cost") or 0)
             count += 1
     return total, count
@@ -195,6 +194,8 @@ def main():
     ctx = ssl_ctx()
 
     now = datetime.now(timezone.utc)
+    today_midnight = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    yesterday_midnight = today_midnight - timedelta(days=1)
     yesterday = (now - timedelta(days=1)).strftime("%b %-d")
 
     lines = [f"💰 API Spend Report"]
@@ -222,9 +223,14 @@ def main():
     vapi_key = env.get("VAPI_API_KEY", "")
     if vapi_key:
         try:
-            total, count = vapi_spend(vapi_key, ctx)
+            total, count = vapi_spend(
+                vapi_key,
+                ctx,
+                start=yesterday_midnight,
+                end=today_midnight,
+            )
             vapi_yesterday = total
-            lines.append(f"Vapi (last 24h): ${total:.2f}  ({count} call(s))")
+            lines.append(f"Vapi yesterday ({yesterday} UTC): ${total:.2f}  ({count} call(s))")
         except Exception as e:
             lines.append(f"Vapi: fetch error ({e})")
     else:

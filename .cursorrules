@@ -115,14 +115,14 @@ ls -lt /tmp/openclaw/openclaw-*.log | head -3
 tail -50 /tmp/openclaw/openclaw-$(date +%Y-%m-%d).log
 ```
 
-## Current state snapshot
+## Current repo snapshot
 
 **STATUS: ACTIVE** — Restored 2026-04-18. Gateway, LaunchAgents, cron, and WhatsApp are running.
 
-### Current config (as of 2026-04-19)
+### Current repo defaults (as of 2026-04-20)
 
-- **Primary model:** google/gemini-2.5-pro (OpenAI quota exhausted 2026-04-06; restore with `primary: "openai/gpt-5.4-mini"` after adding credits)
-- **Fallback model:** openai/gpt-5.4-mini
+- **Primary model:** openai/gpt-5.4-mini
+- **Fallback model:** google/gemini-2.5-pro
 - **WhatsApp:** allowlist-only (+19179752041, +19176997436), groups disabled
 - **Gateway:** localhost:18789, token auth (token injected from .env via template)
 - **Exec config:** `host: "gateway"`, `security: "full"`, pathPrepend (python3, homebrew).
@@ -148,7 +148,7 @@ tail -50 /tmp/openclaw/openclaw-$(date +%Y-%m-%d).log
 - **iMessage/SMS:** scripts/imessage.py — requires Full Disk Access for python3 binary.
 - **Phone calls:** scripts/vapi-call.py — Riley assistant (VAPI_ASSISTANT_ID in .env).
   Outbound: +19179628631. Cost ~11c/min. Always ask before dialing.
-- **Email:** Gmail works (himalaya + gog OAuth). Yahoo NOT wired (YAHOO_APP_PASSWORD missing from .env).
+- **Email:** Gmail and Yahoo are both supported through `scripts/email-search.py` when the corresponding `.env` credentials are present.
 - **Calendar/Drive/Contacts:** gog CLI (OAuth, project polar-city-407401)
 - **GitHub:** https://github.com/iarsenin/IgorOpenClaw (private)
 
