@@ -227,8 +227,27 @@ def cmd_list(limit=10):
 
 _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-SEEN_FILE = os.path.join(_REPO_ROOT, ".vapi-seen-calls")
-PENDING_FILE = os.path.join(_REPO_ROOT, ".vapi-pending-outbound")
+# Runtime state must live outside the Google Drive–synced repo, otherwise the
+# Drive daemon can return EDEADLK (Errno 11 "Resource deadlock avoided") while
+# it syncs the file and crons then fail. ~/.openclaw/state/ is local-only.
+_STATE_DIR = os.path.join(os.path.expanduser("~"), ".openclaw", "state")
+os.makedirs(_STATE_DIR, exist_ok=True)
+
+SEEN_FILE = os.path.join(_STATE_DIR, "vapi-seen-calls")
+PENDING_FILE = os.path.join(_STATE_DIR, "vapi-pending-outbound")
+
+# One-time migration: copy legacy repo-root state into ~/.openclaw/state/
+for _legacy_name, _dest in (
+    (".vapi-seen-calls", SEEN_FILE),
+    (".vapi-pending-outbound", PENDING_FILE),
+):
+    _legacy = os.path.join(_REPO_ROOT, _legacy_name)
+    if os.path.exists(_legacy) and not os.path.exists(_dest):
+        try:
+            with open(_legacy, "rb") as _src, open(_dest, "wb") as _dst:
+                _dst.write(_src.read())
+        except OSError:
+            pass
 
 
 def _load_seen():
