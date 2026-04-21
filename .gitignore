@@ -26,10 +26,12 @@ node_modules/
 logs/
 *.log
 
-# Runtime state
+# Runtime state (now stored under ~/.openclaw/state/; these are symlinks)
 .vapi-seen-calls
 .vapi-pending-outbound
 workspace/MEMORY.md
+workspace/memory
 workspace/memory/
+workspace/transcripts
 workspace/transcripts/
 workspace/auth-profiles.json

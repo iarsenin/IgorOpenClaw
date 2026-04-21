@@ -25,6 +25,7 @@ import json
 import mimetypes
 import os
 import re
+import shutil
 import smtplib
 import subprocess
 import sys
@@ -2090,17 +2091,19 @@ def summarize(state: RunState) -> dict:
     return result
 
 
-def ensure_runtime_dirs(repo_root: Path, seed_url: str) -> Path:
+def ensure_runtime_dirs(seed_url: str) -> Path:
+    # Runtime scratch lives on local disk only (never on Google Drive — causes
+    # EDEADLK lock errors and pointlessly syncs GB of audio to the cloud).
+    state_root = Path.home() / ".openclaw" / "state" / "transcripts"
     digest = hashlib.sha1(seed_url.encode("utf-8")).hexdigest()[:10]
     title = slugify(urlparse(seed_url).netloc or "url")
-    workdir = repo_root / "workspace" / "transcripts" / f"{now_utc()}-{title}-{digest}"
+    workdir = state_root / f"{now_utc()}-{title}-{digest}"
     workdir.mkdir(parents=True, exist_ok=True)
     return workdir
 
 
 def run_pipeline(url: str, *, email_to: str | None, skip_email: bool) -> dict:
-    repo_root = Path(os.environ.get("OPENCLAW_REPO", Path(__file__).resolve().parents[1]))
-    state = RunState(original_url=url, workdir=ensure_runtime_dirs(repo_root, url))
+    state = RunState(original_url=url, workdir=ensure_runtime_dirs(url))
 
     resolve_url(state)
 
@@ -2155,6 +2158,20 @@ def run_pipeline(url: str, *, email_to: str | None, skip_email: bool) -> dict:
         except Exception as exc:
             state.warnings.append(f"Email send failed: {exc}")
 
+    # Once the transcript is in the user's inbox, the scratch workdir is dead
+    # weight. Delete it so we don't accumulate gigabytes of audio. On failure
+    # (no email / partial run), keep the dir — daily-restart sweeps anything
+    # older than 1 day.
+    workdir_removed = False
+    if state.email_sent:
+        try:
+            shutil.rmtree(state.workdir, ignore_errors=True)
+            workdir_removed = True
+            state.transcript_path = None
+            state.audio_path = None
+        except Exception as exc:
+            state.warnings.append(f"Workdir cleanup failed: {exc}")
+
     if not state.transcript_text and not state.whatsapp_summary:
         state.whatsapp_summary = (
             f"I couldn't obtain a full transcript for {state.metadata.get('resolved_url') or state.original_url}. "
@@ -2184,7 +2201,8 @@ def run_pipeline(url: str, *, email_to: str | None, skip_email: bool) -> dict:
         "who": summary.get("who"),
         "warnings": state.warnings,
         "notes": state.notes,
-        "workdir": str(state.workdir),
+        "workdir": None if workdir_removed else str(state.workdir),
+        "workdir_removed": workdir_removed,
     }
 
 

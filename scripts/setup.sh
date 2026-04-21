@@ -8,6 +8,7 @@ set -euo pipefail
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 OPENCLAW_DIR="$HOME/.openclaw"
 WORKSPACE_DIR="$OPENCLAW_DIR/workspace"
+STATE_DIR="$OPENCLAW_DIR/state"
 CRON_DIR="$OPENCLAW_DIR/cron"
 PLIST="$HOME/Library/LaunchAgents/ai.openclaw.gateway.plist"
 DAILY_RESTART_PLIST="$HOME/Library/LaunchAgents/ai.openclaw.daily-restart.plist"
@@ -248,13 +249,53 @@ fi
 ln -sfn "$REPO_DIR/workspace" "$WORKSPACE_DIR"
 echo "Linked: workspace/ -> $WORKSPACE_DIR"
 
-# --- Ensure local-only MEMORY.md exists ---
+# --- Runtime state lives on local disk, not Google Drive -------------------
+# Google Drive File Stream throws EDEADLK when many small writes hit a synced
+# file, and needlessly syncs gigabytes of transient audio/transcripts. Keep
+# everything mutable under ~/.openclaw/state/ and symlink from workspace/.
+mkdir -p "$STATE_DIR/transcripts" "$STATE_DIR/memory"
+
+# MEMORY.md — agent writes this every turn.
 MEMORY_TEMPLATE="$REPO_DIR/workspace/MEMORY.template.md"
-MEMORY_FILE="$REPO_DIR/workspace/MEMORY.md"
-if [ ! -f "$MEMORY_FILE" ] && [ -f "$MEMORY_TEMPLATE" ]; then
-    cp "$MEMORY_TEMPLATE" "$MEMORY_FILE"
-    echo "Initialized local workspace/MEMORY.md from template"
+MEMORY_STATE="$STATE_DIR/MEMORY.md"
+MEMORY_LINK="$REPO_DIR/workspace/MEMORY.md"
+if [ -f "$MEMORY_LINK" ] && [ ! -L "$MEMORY_LINK" ]; then
+    mv "$MEMORY_LINK" "$MEMORY_STATE"
+    echo "Migrated workspace/MEMORY.md → $MEMORY_STATE"
 fi
+if [ ! -f "$MEMORY_STATE" ] && [ -f "$MEMORY_TEMPLATE" ]; then
+    cp "$MEMORY_TEMPLATE" "$MEMORY_STATE"
+    echo "Initialized $MEMORY_STATE from template"
+fi
+if [ ! -L "$MEMORY_LINK" ]; then
+    ln -sfn "$MEMORY_STATE" "$MEMORY_LINK"
+fi
+
+# auth-profiles.json — OAuth tokens, rotated frequently.
+AUTH_STATE="$STATE_DIR/auth-profiles.json"
+AUTH_LINK="$REPO_DIR/workspace/auth-profiles.json"
+if [ -f "$AUTH_LINK" ] && [ ! -L "$AUTH_LINK" ]; then
+    mv "$AUTH_LINK" "$AUTH_STATE"
+    chmod 600 "$AUTH_STATE"
+    echo "Migrated workspace/auth-profiles.json → $AUTH_STATE"
+fi
+if [ ! -L "$AUTH_LINK" ] && [ -f "$AUTH_STATE" ]; then
+    ln -sfn "$AUTH_STATE" "$AUTH_LINK"
+fi
+
+# workspace/memory/ — dated snapshots + task-history.md + .dreams/.
+MEMORY_DIR_STATE="$STATE_DIR/memory"
+MEMORY_DIR_LINK="$REPO_DIR/workspace/memory"
+if [ -d "$MEMORY_DIR_LINK" ] && [ ! -L "$MEMORY_DIR_LINK" ]; then
+    # Merge any leftover files into local state, then replace with symlink.
+    cp -Rn "$MEMORY_DIR_LINK/." "$MEMORY_DIR_STATE/" 2>/dev/null || true
+    rm -rf "$MEMORY_DIR_LINK"
+    echo "Migrated workspace/memory/ → $MEMORY_DIR_STATE"
+fi
+if [ ! -L "$MEMORY_DIR_LINK" ]; then
+    ln -sfn "$MEMORY_DIR_STATE" "$MEMORY_DIR_LINK"
+fi
+# ---------------------------------------------------------------------------
 
 # --- Seed live cron store from repo template ---
 if [ -L "$CRON_DIR/jobs.json" ]; then

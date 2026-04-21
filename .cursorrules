@@ -54,10 +54,26 @@ contains:
 - `workspace/USER.md` — user context (timezone, preferences)
 - `workspace/TOOLS.md` — available tools and environment notes
 - `workspace/MEMORY.template.md` — tracked template for memory structure
-- `workspace/MEMORY.md` — local-only agent runtime state (git-ignored)
+- `workspace/MEMORY.md` — **symlink** → `~/.openclaw/state/MEMORY.md`
+  (local-only, git-ignored; agent writes every turn)
+- `workspace/memory/` — **symlink** → `~/.openclaw/state/memory/`
+  (task-history.md, dated snapshots, .dreams/)
+- `workspace/auth-profiles.json` — **symlink** → `~/.openclaw/state/auth-profiles.json`
+  (OAuth tokens)
 - `workspace/HEARTBEAT.md` — proactive behavior guidelines (references
   config/cron/jobs.json for schedules)
 - `.env.example` — template for required environment variables
+
+### Runtime state lives outside Google Drive
+
+Anything the agent writes frequently (MEMORY.md, transcripts, vapi queues,
+OAuth tokens, task history) lives under `~/.openclaw/state/` — NOT in this
+repo. Drive File Stream throws `OSError: [Errno 11] Resource deadlock avoided`
+under concurrent small writes, and pointlessly syncs GB of scratch audio. The
+workspace/ entries above are symlinks; `scripts/setup.sh` recreates them on a
+fresh install. `scripts/daily-restart.sh` sweeps abandoned transcript workdirs
+(>1 day) and prunes `/tmp/openclaw/openclaw-*.log` (>7 days) every morning at
+4 AM ET. Transcribe runs self-delete their workdir as soon as the email sends.
 
 ## After every change session
 
