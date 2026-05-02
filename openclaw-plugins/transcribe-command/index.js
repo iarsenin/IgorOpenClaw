@@ -9,6 +9,7 @@ const REPO_DIR = path.resolve(PLUGIN_DIR, "../..");
 const SCRIPT_PATH = path.join(REPO_DIR, "scripts", "transcribe-url.py");
 const DEFAULT_EMAIL = "igor.arsenin@gmail.com";
 const COMMAND_TIMEOUT_MS = 15 * 60 * 1000;
+const HELPER_MAX_ATTEMPTS = 2;
 const PYTHON_IMPORT_CHECK = "import requests, bs4; print('ok')";
 
 const OPENCLAW_CLI_CANDIDATES = [
@@ -129,6 +130,63 @@ function sanitizeText(value) {
     return typeof value === "string" ? value.trim() : "";
 }
 
+function summarizeStream(text, limit = 240) {
+    const cleaned = String(text ?? "").replace(/\s+/gu, " ").trim();
+    if (!cleaned) {
+        return "";
+    }
+    return cleaned.length <= limit ? cleaned : `${cleaned.slice(0, limit - 1)}…`;
+}
+
+function parseHelperJsonOutput(stdout, stderr = "") {
+    const raw = String(stdout ?? "");
+    const trimmed = raw.trim();
+    if (!trimmed) {
+        const error = new Error("Helper produced empty stdout.");
+        error.code = "HELPER_EMPTY_STDOUT";
+        error.stdout = raw;
+        error.stderr = String(stderr ?? "");
+        throw error;
+    }
+
+    try {
+        return JSON.parse(trimmed);
+    } catch (initialError) {
+        const start = trimmed.indexOf("{");
+        const end = trimmed.lastIndexOf("}");
+        if (start !== -1 && end > start) {
+            try {
+                return JSON.parse(trimmed.slice(start, end + 1));
+            } catch {
+                // Fall through to the richer parse error below.
+            }
+        }
+
+        const error = new Error(
+            `Could not parse helper JSON output: ${initialError instanceof Error ? initialError.message : String(initialError)}`
+            + ` (stdout ${raw.length} bytes${stderr ? `, stderr ${String(stderr).length} bytes` : ""}`
+            + `${summarizeStream(raw) ? `, stdout=${JSON.stringify(summarizeStream(raw))}` : ""}`
+            + `${summarizeStream(stderr) ? `, stderr=${JSON.stringify(summarizeStream(stderr))}` : ""})`,
+        );
+        error.code = "HELPER_JSON_PARSE";
+        error.stdout = raw;
+        error.stderr = String(stderr ?? "");
+        throw error;
+    }
+}
+
+function shouldRetryHelper(error) {
+    if (!error || (error.code !== "HELPER_EMPTY_STDOUT" && error.code !== "HELPER_JSON_PARSE")) {
+        return false;
+    }
+    const stdout = String(error.stdout ?? "").trim();
+    const stderr = String(error.stderr ?? "").trim();
+    if (!stdout && !stderr) {
+        return true;
+    }
+    return stdout.includes("{") && !stdout.includes("}");
+}
+
 function extractTranscribeUrl(body) {
     const trimmed = sanitizeText(body);
     if (!trimmed) {
@@ -176,19 +234,24 @@ function resolvePythonCommand(env) {
     return null;
 }
 
-function runHelper(url) {
+function runHelperOnce(url, options = {}) {
     return new Promise((resolve, reject) => {
         const env = {
             ...parseDotEnv(path.join(REPO_DIR, ".env")),
             ...process.env,
+            ...(options.env ?? {}),
         };
         env.HOME ||= os.homedir();
-        const pythonCommand = resolvePythonCommand(env);
+        const pythonCommand = options.pythonCommand ?? resolvePythonCommand(env);
+        const spawnImpl = options.spawnImpl ?? spawn;
+        const scheduleTimeout = options.setTimeoutImpl ?? setTimeout;
+        const cancelTimeout = options.clearTimeoutImpl ?? clearTimeout;
+
         if (!pythonCommand) {
             reject(new Error("Python runtime for /transcribe is missing requests/beautifulsoup4. Run scripts/setup.sh again or install them for the gateway Python."));
             return;
         }
-        const child = spawn(
+        const child = spawnImpl(
             pythonCommand,
             [SCRIPT_PATH, "run", url, "--email-to", DEFAULT_EMAIL, "--json"],
             {
@@ -201,7 +264,7 @@ function runHelper(url) {
         let stdout = "";
         let stderr = "";
         let timedOut = false;
-        const timer = setTimeout(() => {
+        const timer = scheduleTimeout(() => {
             timedOut = true;
             child.kill("SIGTERM");
         }, COMMAND_TIMEOUT_MS);
@@ -213,11 +276,11 @@ function runHelper(url) {
             stderr += String(chunk);
         });
         child.on("error", (error) => {
-            clearTimeout(timer);
+            cancelTimeout(timer);
             reject(error);
         });
         child.on("close", (code) => {
-            clearTimeout(timer);
+            cancelTimeout(timer);
             if (timedOut) {
                 reject(new Error("Transcription timed out before the helper finished."));
                 return;
@@ -227,12 +290,27 @@ function runHelper(url) {
                 return;
             }
             try {
-                resolve(JSON.parse(stdout));
+                resolve(parseHelperJsonOutput(stdout, stderr));
             } catch (error) {
-                reject(new Error(`Could not parse helper JSON output: ${error instanceof Error ? error.message : String(error)}`));
+                reject(error);
             }
         });
     });
+}
+
+async function runHelper(url, options = {}) {
+    let lastError = null;
+    for (let attempt = 1; attempt <= HELPER_MAX_ATTEMPTS; attempt += 1) {
+        try {
+            return await runHelperOnce(url, options);
+        } catch (error) {
+            lastError = error;
+            if (attempt >= HELPER_MAX_ATTEMPTS || !shouldRetryHelper(error)) {
+                throw error;
+            }
+        }
+    }
+    throw lastError ?? new Error("Transcription helper failed unexpectedly.");
 }
 
 export default {
@@ -322,4 +400,10 @@ export default {
             },
         });
     },
+};
+
+export {
+    parseHelperJsonOutput,
+    runHelper,
+    shouldRetryHelper,
 };

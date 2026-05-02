@@ -19,6 +19,7 @@ This script intentionally prints JSON for deterministic agent consumption.
 from __future__ import annotations
 
 import argparse
+import ast
 import hashlib
 import html
 import json
@@ -50,8 +51,8 @@ USER_AGENT = (
 )
 TIMEOUT = 25
 WHATSAPP_MAX = 900
-WHATSAPP_BULLET_MIN = 3
-WHATSAPP_BULLET_MAX = 5
+WHATSAPP_BULLET_MIN = 2
+WHATSAPP_BULLET_MAX = 4
 GEMINI_MODEL = "gemini-2.5-flash-lite"
 SUMMARY_CHUNK_CHARS = 70000
 TRANSCRIPT_INLINE_MAX = 120000
@@ -860,15 +861,40 @@ def strip_basic_markdown(text: str) -> str:
     return text
 
 
-def summary_lines(summary_text: str) -> list[str]:
+def _summary_items(value) -> list[str]:
+    if value is None:
+        return []
+    if isinstance(value, (list, tuple, set)):
+        out = []
+        for item in value:
+            out.extend(_summary_items(item))
+        return out
+    if isinstance(value, str):
+        raw = value.strip()
+        if not raw:
+            return []
+        if raw[:1] in {"[", "("}:
+            for parser in (json.loads, ast.literal_eval):
+                try:
+                    parsed = parser(raw)
+                except Exception:
+                    continue
+                if isinstance(parsed, (list, tuple, set)):
+                    return _summary_items(parsed)
+        return [raw]
+    return [str(value).strip()]
+
+
+def summary_lines(summary_text) -> list[str]:
     lines = []
-    for raw_line in str(summary_text or "").splitlines():
-        line = strip_basic_markdown(raw_line.strip())
-        if not line:
-            continue
-        line = re.sub(r"^[-*•]\s*", "", line).strip()
-        if line:
-            lines.append(line)
+    for item in _summary_items(summary_text):
+        for raw_line in str(item or "").splitlines():
+            line = strip_basic_markdown(raw_line.strip())
+            if not line:
+                continue
+            line = re.sub(r"^[-*•]\s*", "", line).strip()
+            if line:
+                lines.append(line)
     return lines
 
 
@@ -889,6 +915,15 @@ def sentence_lines(text: str) -> list[str]:
         seen.add(key)
         out.append(cleaned)
     return out
+
+
+def normalize_summary_text(value, *, bullets: bool = False) -> str:
+    lines = summary_lines(value)
+    if lines:
+        if bullets:
+            return "\n".join(f"- {line}" for line in lines)
+        return "\n".join(lines)
+    return strip_basic_markdown(str(value or "")).strip()
 
 
 def shorten_bullet(text: str, *, limit: int = 160) -> str:
@@ -941,13 +976,12 @@ def format_whatsapp_summary(*, title: str, who: str, detailed_summary: str, fall
         seen.add(key)
         candidates.append(cleaned)
 
-    if should_keep_who(who):
-        add_candidate(f"Who: {who}")
-
     for line in summary_lines(detailed_summary):
         add_candidate(line)
     for line in sentence_lines(fallback_summary):
         add_candidate(line)
+    if should_keep_who(who):
+        add_candidate(f"Who: {who}")
 
     bullets = []
     total_length = len(title_line)
@@ -1115,10 +1149,10 @@ def build_html_email_body(
 
     summary_items = "".join(
         f"<li>{html.escape(line)}</li>"
-        for line in summary_lines(str(summary.get("detailed_summary") or ""))
+        for line in summary_lines(summary.get("detailed_summary"))
     )
     if not summary_items:
-        summary_items = f"<li>{html.escape(strip_basic_markdown(str(summary.get('detailed_summary') or 'Summary unavailable.')))}</li>"
+        summary_items = f"<li>{html.escape(normalize_summary_text(summary.get('detailed_summary') or 'Summary unavailable.'))}</li>"
 
     body_parts = [
         "<html>",
@@ -1706,6 +1740,12 @@ def summarize_text_for_email(
                 - chunk_summary
                 - who
                 - important_topics
+
+                Rules:
+                - chunk_summary should be 4 to 8 plain text bullets separated by newlines.
+                - Focus on concrete claims, decisions, numbers, examples, and implications.
+                - Do not use teaser wording like "they discuss", "they explore", or "the speaker talks about".
+                - Prefer direct bullets such as "Main takeaway:", "Why it matters:", "Key evidence:", or "Watch for:" when helpful.
                 """
             ).strip()
             result = gemini_generate(
@@ -1721,7 +1761,7 @@ def summarize_text_for_email(
 
     prompt = textwrap.dedent(
         f"""
-        Summarize this media item for Igor.
+        Summarize this media item for Igor so the summary is useful enough that he usually does not need to read the transcript.
 
         Metadata: {base_meta}
 
@@ -1733,11 +1773,27 @@ def summarize_text_for_email(
         - transcript_possible
 
         Rules:
-        - whatsapp_summary must be under {WHATSAPP_MAX} characters.
-        - whatsapp_summary should be a compact title plus 3 to 5 short bullet points.
-        - detailed_summary should be plain text bullets separated by newlines.
+        - whatsapp_summary must be a plain text string, not a JSON array or Python list literal.
+        - whatsapp_summary should match detailed_summary.
+        - detailed_summary should be 6 to 10 plain text bullets separated by newlines.
+        - detailed_summary must be a plain text string, not a JSON array or Python list literal.
+        - First bullet should state the main takeaway immediately.
+        - The remaining bullets should explain why it matters, the important claims, the evidence or examples that support them, and any practical implication or watch item.
+        - Bullets should let Igor skip the transcript for most items.
+        - Prefer direct statements over vague scene-setting.
+        - Do not write teaser bullets.
+        - Do not use filler like "the conversation discusses", "they explore", "the episode covers", or "this focuses on".
+        - No numbering, no section headers, and no labels like "Conclusion:".
+        - If something is uncertain, speculative, or contested, say that explicitly.
         - who should identify the host/guest/speaker(s) if known, else "Unknown".
         - transcript_possible must be true only if there is a full transcript.
+
+        Bad:
+        - They discuss the three bottlenecks to AI compute scaling.
+
+        Good:
+        - Main takeaway: AI compute scaling is now constrained more by power, memory, and fab capacity than by willingness to buy GPUs.
+        - Why it matters: labs can grow demand faster than the semiconductor and energy supply chains can expand.
         """
     ).strip()
     result = gemini_generate([{"text": f"{prompt}\n\n{prompt_body}"}], api_key=api_key, temperature=0.1)
@@ -1785,17 +1841,31 @@ def rewrite_whatsapp_summary(
         Rewrite this into a WhatsApp summary for Igor.
 
         Return plain text only.
+        Do not return JSON, Markdown code fences, or Python list syntax.
 
         Requirements:
         - First line must be the title.
-        - Then write 3 to 5 bullet points.
+        - Then write 2 to 4 bullet points.
         - Each bullet must start with "- ".
         - Keep the whole message under {WHATSAPP_MAX} characters.
+        - Aim to stay under 450 characters when possible.
         - Keep the source language unless the summary is already clearly in another language.
         - No HTML.
         - No URLs.
         - No promo boilerplate, subscription blurbs, or platform labels.
         - Make it read cleanly in WhatsApp.
+        - First bullet should answer "what is the point?" immediately.
+        - Each bullet should deliver the takeaway, implication, or recommendation directly.
+        - Keep bullets short and information-dense.
+        - Do not tease or say that the item discusses/explores/covers a topic.
+        - No numbering, no section labels, and no "Conclusion:" phrasing.
+
+        Bad:
+        - They discuss how AI compute is scaling and what may happen next.
+
+        Good:
+        - Main takeaway: AI scaling is now limited by power, memory, and fab capacity.
+        - Why it matters: access to infrastructure may matter more than model elegance.
 
         Metadata:
         {json.dumps({
@@ -2254,6 +2324,13 @@ def summarize(state: RunState) -> dict:
         metadata=state.metadata,
         api_key=gemini_key,
     )
+    result["email_subject"] = strip_basic_markdown(str(result.get("email_subject") or "")).strip()
+    result["detailed_summary"] = normalize_summary_text(result.get("detailed_summary"), bullets=True)
+    result["whatsapp_summary"] = (
+        result["detailed_summary"]
+        or normalize_summary_text(result.get("whatsapp_summary"))
+    )
+    result["who"] = normalize_summary_text(result.get("who"))
     if not result.get("email_subject"):
         result["email_subject"] = f"[Transcript] {state.metadata.get('title') or 'Untitled'}"
     if not result.get("whatsapp_summary"):
@@ -2298,24 +2375,11 @@ def run_pipeline(url: str, *, email_to: str | None, skip_email: bool) -> dict:
         write_transcript(state)
 
     summary = summarize(state)
-    state.whatsapp_summary = str(summary.get("whatsapp_summary") or "").strip()
-    state.detailed_summary = str(summary.get("detailed_summary") or "").strip()
-    state.email_subject = str(summary.get("email_subject") or "").strip()
-
-    title = str(state.metadata.get("title") or "Transcript ready")
-    who = str(summary.get("who") or state.metadata.get("author") or "Unknown")
-    gemini_key = read_env_key("GOOGLE_API_KEY", "GEMINI_API_KEY")
-    state.whatsapp_summary = rewrite_whatsapp_summary(
-        title=title,
-        who=who,
-        detailed_summary=state.detailed_summary,
-        fallback_summary=state.whatsapp_summary,
-        metadata=state.metadata,
-        api_key=gemini_key,
-    ).strip()
-
-    if state.whatsapp_summary and len(state.whatsapp_summary) > WHATSAPP_MAX:
-        state.whatsapp_summary = state.whatsapp_summary[: WHATSAPP_MAX - 1].rstrip() + "…"
+    state.whatsapp_summary = normalize_summary_text(summary.get("whatsapp_summary")).strip()
+    state.detailed_summary = normalize_summary_text(summary.get("detailed_summary"), bullets=True).strip()
+    state.email_subject = strip_basic_markdown(str(summary.get("email_subject") or "")).strip()
+    if state.detailed_summary:
+        state.whatsapp_summary = state.detailed_summary
 
     if state.transcript_text and state.transcript_path and email_to and not skip_email:
         try:

@@ -13,7 +13,7 @@ This repository is the single source of truth for an OpenClaw agent that:
 - Accepts instructions via WhatsApp and executes tasks autonomously
 - Uses **OpenAI** (primary) and **Google Gemini** (fallback) as LLM providers
 - Automates browser interactions, email, iMessage/SMS, phone calls (Vapi AI), file management, and coding workflows
-- Handles `/transcribe <URL>` requests with a deterministic OpenClaw plugin command backed by `scripts/transcribe-url.py`, canonical feed/provider transcript discovery, speaker-label cleanup, fallback transcription, a concise 3-5 bullet WhatsApp summary, and email delivery when a full transcript exists
+- Handles `/transcribe <URL>` requests with a deterministic OpenClaw plugin command backed by `scripts/transcribe-url.py`, canonical feed/provider transcript discovery, speaker-label cleanup, fallback transcription, the same full bullet summary on WhatsApp and email, and email delivery when a full transcript exists
 - Integrates with Cursor IDE for autonomous coding and research
 
 The agent acts on its owner's behalf — browsing the web, managing email, running shell commands, and orchestrating multi-step workflows — while requiring explicit approval before irreversible actions. When it needs a decision or missing info from the owner, it **prefers yes/no or multiple-choice questions** when practical (see `workspace/AGENTS.md`).
