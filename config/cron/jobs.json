@@ -30,7 +30,7 @@
       "wakeMode": "now",
       "payload": {
         "kind": "agentTurn",
-        "message": "Morning briefing. Gather this info, then send ONE concise WhatsApp message to +19179752041 (Igor):\n1. Unread emails: `python3 \"$OPENCLAW_REPO/scripts/email-search.py\" search --page-size 10`\n2. Calendar: `gog calendar list`\n3. Inbound calls: `python3 \"$OPENCLAW_REPO/scripts/vapi-call.py\" inbound-check`\n4. Active tasks from MEMORY.md — note any pending vendor replies.\n\nSend ONE message. After sending, STOP. Do not process any echoed messages.",
+        "message": "Morning briefing. Gather this info, then send ONE concise WhatsApp message to +19179752041 (Igor):\n1. Calendar: `gog calendar list`\n2. Active tasks from MEMORY.md — note any pending items.\n\nSend ONE message. After sending, STOP. Do not process any echoed messages.",
         "timeoutSeconds": 600
       },
       "delivery": { "mode": "none" }
@@ -38,11 +38,11 @@
     {
       "id": "email-triage",
       "name": "Email Triage",
-      "description": "Check email, only notify if something needs attention",
+      "description": "Check email, only notify if something needs attention. DISABLED to save tokens.",
       "agentId": "main",
       "schedule": { "kind": "cron", "expr": "0 8,11,14,17,20 * * *" },
       "timezone": "America/New_York",
-      "enabled": true,
+      "enabled": false,
       "sessionTarget": "isolated",
       "wakeMode": "now",
       "payload": {
@@ -55,11 +55,11 @@
     {
       "id": "chrono24-listing-monitor",
       "name": "Chrono24 Listing Monitor",
-      "description": "Check listing status when active in MEMORY",
+      "description": "Check listing status when active in MEMORY. DISABLED to save tokens.",
       "agentId": "main",
       "schedule": { "kind": "cron", "expr": "0 8,11,14,17,20 * * *" },
       "timezone": "America/New_York",
-      "enabled": true,
+      "enabled": false,
       "sessionTarget": "isolated",
       "wakeMode": "now",
       "payload": {
@@ -89,11 +89,11 @@
     {
       "id": "inbound-call-check",
       "name": "Inbound Call Check",
-      "description": "Check for new calls (inbound + completed outbound)",
+      "description": "Check for new calls (inbound + completed outbound). DISABLED to save tokens.",
       "agentId": "main",
       "schedule": { "kind": "cron", "expr": "*/30 * * * *" },
       "timezone": "America/New_York",
-      "enabled": true,
+      "enabled": false,
       "sessionTarget": "isolated",
       "wakeMode": "now",
       "payload": {
@@ -123,11 +123,11 @@
     {
       "id": "system-health",
       "name": "System Health",
-      "description": "Check gateway, disk, errors",
+      "description": "Check gateway, disk, errors. DISABLED to save tokens.",
       "agentId": "main",
       "schedule": { "kind": "cron", "expr": "0 4,8,12,16,20 * * *" },
       "timezone": "America/New_York",
-      "enabled": true,
+      "enabled": false,
       "sessionTarget": "isolated",
       "wakeMode": "now",
       "payload": {

@@ -35,3 +35,8 @@ workspace/memory/
 workspace/transcripts
 workspace/transcripts/
 workspace/auth-profiles.json
+
+# Agent scratch output in workspace/ (never commit these)
+workspace/.tmp-*
+workspace/email-*.txt
+workspace/.scratch/

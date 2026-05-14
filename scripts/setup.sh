@@ -44,15 +44,15 @@ echo ""
 
 # --- Check prerequisites ---
 if [ -z "$NODE_BIN" ] || [ ! -x "$NODE_BIN" ]; then
-    echo "ERROR: Node.js not found. Install it first:"
-    echo "  brew install node@22"
+    echo "ERROR: Node.js not found. Install it first (Node 24 recommended):"
+    echo "  brew install node@24"
     exit 1
 fi
 
 NODE_VERSION=$("$NODE_BIN" -v | sed 's/v//' | cut -d. -f1)
 if [ "$NODE_VERSION" -lt 22 ]; then
-    echo "ERROR: Node.js 22+ required. Found: $("$NODE_BIN" -v)"
-    echo "  brew install node@22"
+    echo "ERROR: Node.js 22+ required (24 recommended). Found: $("$NODE_BIN" -v)"
+    echo "  brew install node@24"
     exit 1
 fi
 

@@ -14,25 +14,24 @@
 
 ## Scheduled Jobs (canonical source: config/cron/jobs.json)
 
-| Job                      | ET Schedule                    | Purpose                                               |
-|--------------------------|--------------------------------|-------------------------------------------------------|
-| post-restart-resume      | 4:05 AM daily                  | Resume active tasks after restart; warm browser       |
-| api-spend-check          | 5:00 AM daily                  | Yesterday's OpenAI + Vapi $ + Cursor plan → WhatsApp  |
-| morning-briefing         | 7:30 AM daily                  | Emails + calendar + overnight calls + active tasks    |
-| email-triage             | 8, 11, 14, 17, 20 (5×/day)     | Flag urgent emails + MEMORY-task senders              |
-| chrono24-listing-monitor | 8, 11, 14, 17, 20 (5×/day)     | Listing vs `last-chrono-baseline`; `browser close`    |
-| sms-reply-monitor        | 8:30, 11:30, 14:30, 17:30, 20:30 | Poll MEMORY `sms-watch` threads via `imessage.py`     |
-| system-health            | 4, 8, 12, 16, 20 (5×/day)      | Gateway, disk, error log                              |
-| inbound-call-check       | Every 30 min                   | Poll Vapi for new inbound calls                       |
+Only 3 jobs are currently **enabled**. The rest remain defined for fast re-enable.
+
+| Job                      | ET Schedule         | Enabled | Purpose                                               |
+|--------------------------|---------------------|---------|-------------------------------------------------------|
+| post-restart-resume      | 4:05 AM daily       | yes     | Resume active tasks after restart; warm browser       |
+| api-spend-check          | 5:00 AM daily       | yes     | Yesterday's OpenAI + Vapi $ + Cursor plan → WhatsApp  |
+| morning-briefing         | 7:30 AM daily       | yes     | Calendar + active tasks from MEMORY → WhatsApp        |
+| email-triage             | 8, 11, 14, 17, 20   | no      | (disabled — flagged urgent emails / MEMORY-task senders) |
+| chrono24-listing-monitor | 8, 11, 14, 17, 20   | no      | (disabled — listing vs `last-chrono-baseline`)         |
+| sms-reply-monitor        | 8:30, 11:30, …      | no      | (disabled — poll MEMORY `sms-watch` threads)           |
+| system-health            | 4, 8, 12, 16, 20    | no      | (disabled — gateway/disk/error log)                    |
+| inbound-call-check       | every 30 min        | no      | (disabled — poll Vapi for new inbound calls)           |
 
 ## Behavioral Rules
 
-- **Quiet hours (11 PM – 7 AM ET):** suppress non-critical notifications. Cron jobs still run; findings defer to morning briefing.
+- **Quiet hours (11 PM – 7 AM ET):** suppress non-critical notifications. Findings from enabled jobs defer to morning briefing.
 - **Critical** = security alerts, service outages, messages marked urgent. Send immediately even in quiet hours.
-- **Email triage:** draft replies but never send without user approval.
-- **System health:** only notify if something is wrong.
-- **Inbound calls during quiet hours:** do NOT alert immediately. Track seen calls; surface in morning briefing. Exception: if the caller's number matches an active MEMORY task, treat as critical.
-- **Morning briefing:** deliver via WhatsApp; include active tasks from MEMORY.md + overnight calls.
-- **SMS reply monitor:** uses `sms-watch` / `last-sms-baseline` per task; don't spam WhatsApp when there's nothing new.
-- **Chrono24 monitor:** only does real work if MEMORY has an active Chrono24 task; updates `last-chrono-baseline`; must `browser close` after any readable check.
+- **Morning briefing:** deliver via WhatsApp; include calendar + active tasks from MEMORY.md.
+- **Inbound calls:** while `inbound-call-check` cron is disabled, Igor must explicitly ask (`vapi-call.py inbound-check`) to surface new calls. The outbound `call` watcher still delivers proactive summaries.
+- **Disabled jobs:** behavior described above for `email-triage`, `chrono24-listing-monitor`, `sms-reply-monitor`, `system-health` only activates if Igor re-enables them in `config/cron/jobs.json`.
 - **Browser:** managed Chrome must not be left open after Clawd's turn (see `AGENTS.md` § Browser hygiene).

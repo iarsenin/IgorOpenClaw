@@ -660,14 +660,15 @@ Outbound:  Clawd → vapi-call.py call → POST api.vapi.ai/call → Riley → r
              then `openclaw message send` pushes a summary to Igor on WhatsApp
              within ~30s of the call ending
 Inbound:   caller → +19179628631 → Vapi → Riley answers, takes message
-Polling:   cron (every 30 min) → vapi-call.py inbound-check → WhatsApp alert
-           (safety net for watcher failures + catches new inbound calls)
+Polling:   `inbound-call-check` cron is currently DISABLED (token savings).
+           Run `vapi-call.py inbound-check` on demand to surface new calls,
+           or flip `enabled: true` in `config/cron/jobs.json` to restore polling.
 ```
 
 - `scripts/vapi-call.py` is a standalone Python script (no pip dependencies)
 - Riley's base system prompt is edited in Vapi; canonical voicemail/callback text is in `config/riley-voice-behavior.md`, and the same outbound voicemail rules are injected on every outbound call via `assistantOverrides`
 - Inbound calls are tracked in `.vapi-seen-calls` (git-ignored) to avoid duplicate alerts
-- The `inbound-call-check` cron job in `config/cron/jobs.json` runs every 30 minutes
+- The `inbound-call-check` cron job in `config/cron/jobs.json` is defined but currently `enabled: false`
 - Outbound calls use `assistantOverrides` to inject task-specific instructions per call
 - Cost is ~$0.11/minute (Vapi's rate for their managed model + telephony + TTS/STT)
 
@@ -691,10 +692,12 @@ openclaw skills list
 # Expected: browser-automation, himalaya (email), gog (Google Workspace),
 #           cursor-ide-agent, apple-reminders, and others (see TOOLS.md for full list)
 
-# 4. Cron jobs are loaded
+# 4. Cron jobs are loaded (3 enabled by default, 5 defined-but-disabled)
 openclaw cron list
-# Expected: post-restart-resume, morning-briefing, api-spend-check, email-triage,
-#           chrono24-listing-monitor, sms-reply-monitor, inbound-call-check, system-health
+# Expected enabled: post-restart-resume, api-spend-check, morning-briefing
+# Defined but disabled (in config/cron/jobs.json): email-triage,
+#   chrono24-listing-monitor, sms-reply-monitor, inbound-call-check, system-health
+# Re-enable any of these by flipping `enabled: true` in the repo template + re-running `bash scripts/setup.sh`.
 
 # 5. Open the dashboard
 openclaw dashboard

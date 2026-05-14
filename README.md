@@ -1,6 +1,6 @@
 # IgorOpenClaw
 
-> **STATUS: ACTIVE (restored 2026-04-18).** Gateway, LaunchAgents, cron, and the local `/transcribe` plugin are back in service.
+> **STATUS: ACTIVE (restored 2026-04-18, lean-cron mode as of 2026-05-14).** Gateway, LaunchAgents, and the local `/transcribe` plugin are running. Only 3 cron jobs are currently enabled (`post-restart-resume`, `api-spend-check`, `morning-briefing`); the rest are defined but disabled in `config/cron/jobs.json` to save tokens.
 > Keep `config/`, `workspace/`, and `scripts/` as the source of truth, then re-run `bash scripts/setup.sh` after runtime repairs or upgrades.
 
 Version-controlled configuration and workspace for an always-on [OpenClaw](https://github.com/openclaw/openclaw) autonomous AI agent running on a Mac Mini M2.

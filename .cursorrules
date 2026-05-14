@@ -40,7 +40,7 @@ contains:
    - If any in-flight work is detected, either wait for it to finish or ask Igor
      before restarting. MEMORY.md / workspace/*.md edits never need a restart;
      only config/cron and gateway-level JSON changes do.
-5. **SETUP_GUIDE.md is a standalone doc** meant to be pasted into a Gemini
+6. **SETUP_GUIDE.md is a standalone doc** meant to be pasted into a Gemini
    session. Keep it self-contained with full commands and context.
 
 ## File layout
@@ -119,7 +119,7 @@ tail -50 /tmp/openclaw/openclaw-$(date +%Y-%m-%d).log
 
 **STATUS: ACTIVE** — Restored 2026-04-18. Gateway, LaunchAgents, cron, and WhatsApp are running.
 
-### Current repo defaults (as of 2026-04-20)
+### Current repo defaults (as of 2026-05-14)
 
 - **Primary model:** openai/gpt-5.4-mini
 - **Fallback model:** google/gemini-2.5-pro
@@ -132,15 +132,14 @@ tail -50 /tmp/openclaw/openclaw-$(date +%Y-%m-%d).log
 - **Browser:** Chrome debug profile at `~/.openclaw/chrome-profile/` (port 9222).
   `refs=aria` is NOT supported (no Playwright `_snapshotForAI`); omit the refs param.
 - **Daily restart:** 4 AM ET via launchd (`ai.openclaw.daily-restart`)
-- **Cron jobs:** post-restart-resume (4:05 AM), morning briefing (7:30 AM),
-  api-spend-check (5:00 AM, 180s timeout — uses OPENAI_ADMIN_KEY; reads Cursor token from local SQLite),
-  email triage (every 2h 8AM-10PM), chrono24-listing-monitor (5x/day),
-  sms-reply-monitor (~every 2h 8:30AM-8:30PM), inbound-call-check (every 30 min), system-health (5x/day).
-  Cron jobs use `--no-deliver`; agent sends WhatsApp via `message` tool explicitly.
+- **Cron jobs — enabled (3):** post-restart-resume (4:05 AM), api-spend-check (5:00 AM, 180s timeout — uses OPENAI_ADMIN_KEY; reads Cursor token from local SQLite), morning briefing (7:30 AM — calendar + active tasks only).
+  **Cron jobs — disabled (kept defined for fast re-enable):** email-triage, chrono24-listing-monitor, sms-reply-monitor, inbound-call-check, system-health.
+  Cron jobs use `delivery.mode: none`; agent sends WhatsApp via `message` tool explicitly.
   Browser-using crons must end with `browser close`.
 - **Workspace file size limit:** Gateway bootstraps workspace files into context with a **12,000-char limit**.
-  `AGENTS.md` must stay ≤ 12,000 chars (currently 11,121). `TOOLS.md` must stay ≤ 12,000 chars (currently 11,960).
+  `AGENTS.md` must stay ≤ 12,000 chars (currently ~11,337). `TOOLS.md` must stay ≤ 12,000 chars (currently ~10,977).
   Files over the limit are silently truncated — the agent runs without the tail of its rules.
+  Check with: `wc -c workspace/AGENTS.md workspace/TOOLS.md`.
 - **Task persistence:** MEMORY.md, TTL 7 days, staleness 48h. See AGENTS.md.
 - **Skills (17):** browser-automation, screenshot, coding-agent, gemini, github,
   gh-issues, peekaboo, summarize, healthcheck, openai-image-gen, openai-whisper-api,

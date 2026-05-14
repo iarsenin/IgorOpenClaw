@@ -169,13 +169,13 @@ def cmd_call(number, task_instructions):
     if watcher_ok:
         print(
             "\nA watcher is polling this call in the background and will "
-            "WhatsApp you a summary within ~30s of the call ending. "
-            "(The 30-min inbound-check cron is still the fallback.)"
+            "WhatsApp you a summary within ~30s of the call ending."
         )
     else:
         print(
-            "\nWARN: could not spawn the call watcher. Summary will arrive "
-            "from the next inbound-check cron cycle (0–30 min)."
+            "\nWARN: could not spawn the call watcher. Run "
+            "`vapi-call.py inbound-check` manually after the call ends "
+            "to retrieve the summary (the inbound-check cron is currently disabled)."
         )
     return call_id
 

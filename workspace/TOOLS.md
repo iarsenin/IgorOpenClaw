@@ -173,7 +173,7 @@ Ask Igor: *"May Riley leave your callback number?"* Encode verbatim in task inst
 2. Draft call plan + ask about callback → get user approval (one y/n line).
 3. `vapi-call.py call <number> <instructions>` (include goals + YES/NO callback lines).
 4. The `call` command auto-spawns a background watcher. Reply to Igor with something like: *"Calling <name> now at <number>. I'll WhatsApp you a summary when the call ends (~2–5 min)."* Then END your turn. **Do NOT poll `status` in-thread** — the watcher delivers the summary proactively, and holding the turn open for minutes breaks on compaction/budget.
-5. The watcher will send Igor a `📞 Call ended` WhatsApp message with duration, ended-reason, cost, and Vapi's summary within ~30s of the call ending. If the watcher fails to spawn (rare), the 30-min `inbound-call-check` cron is the fallback.
+5. The watcher will send Igor a `📞 Call ended` WhatsApp message with duration, ended-reason, cost, and Vapi's summary within ~30s of the call ending. The `inbound-call-check` cron is **currently disabled** to save tokens — if the watcher fails to spawn, Igor must run `vapi-call.py inbound-check` manually or re-enable the cron in `config/cron/jobs.json`.
 
 ### Riley has NO shared context
 
@@ -181,7 +181,7 @@ Include ALL context in task_instructions (business name, numbers, dates, constra
 
 ### Rules
 - Outbound calls ALWAYS require explicit user approval
-- Inbound checking is autonomous (cron `inbound-call-check` every 30 min)
+- Inbound checking is on-demand only (the `inbound-call-check` cron is currently disabled — run `vapi-call.py inbound-check` when Igor asks)
 - Never call during quiet hours (11 PM - 7 AM ET) unless asked
 - Riley cannot commit to payments or final decisions
 
