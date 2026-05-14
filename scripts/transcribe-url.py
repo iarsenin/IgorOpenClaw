@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import argparse
 import ast
+import functools
 import hashlib
 import html
 import json
@@ -29,9 +30,7 @@ import re
 import shutil
 import smtplib
 import subprocess
-import sys
 import textwrap
-import time
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -75,7 +74,13 @@ MEDIA_EXTENSIONS = {
 TRANSCRIPT_EXTENSIONS = {".json", ".srt", ".txt", ".vtt"}
 GEMINI_SAFE_EXTENSIONS = {".aac", ".aiff", ".flac", ".mp3", ".ogg", ".wav"}
 OPENAI_SAFE_EXTENSIONS = {".flac", ".m4a", ".mp3", ".mp4", ".mpeg", ".mpga", ".wav", ".webm"}
+PAGE_TRANSCRIPT_FALLBACK_SELECTORS = (".storytext", "article", "main")
+
+# Speaker / transcript regexes — module-level so we don't recompile per call.
 GENERIC_SPEAKER_RE = re.compile(r"^(Speaker \d+):\s*(.+)$")
+SPEAKER_LABEL_RE = re.compile(r"^([A-Z][A-Za-z0-9 .'\-&]{0,40}):\s+")
+HMS_TIMESTAMP_LINE_RE = re.compile(r"^\d{2}:\d{2}:\d{2}$")
+INLINE_NAME_PREFIX_RE = re.compile(r"^[A-Z][A-Za-z .'-]{1,40}:\s")
 
 SESSION = requests.Session()
 SESSION.headers.update({"User-Agent": USER_AGENT})
@@ -179,6 +184,7 @@ def sh(cmd: list[str], cwd: Path | None = None) -> subprocess.CompletedProcess[s
     )
 
 
+@functools.lru_cache(maxsize=None)
 def command_exists(name: str) -> bool:
     return bool(sh(["/bin/zsh", "-lc", f"command -v {name}"]).stdout.strip())
 
@@ -380,7 +386,7 @@ def extract_speaker_segments(transcript_text: str) -> list[dict]:
         timestamp = None
         label_line = block[0]
         text_lines = block[1:]
-        if re.match(r"^\d{2}:\d{2}:\d{2}$", block[0]) and len(block) >= 2:
+        if HMS_TIMESTAMP_LINE_RE.match(block[0]) and len(block) >= 2:
             timestamp = block[0]
             label_line = block[1]
             text_lines = block[2:]
@@ -809,7 +815,7 @@ def normalize_subtitle_transcript_text(transcript_text: str) -> str:
         if not current:
             current = line
             continue
-        if re.match(r"^[A-Z][A-Za-z .'-]{1,40}:\s", line):
+        if INLINE_NAME_PREFIX_RE.match(line):
             paragraphs.append(current.strip())
             current = line
             continue
@@ -1030,9 +1036,6 @@ def html_paragraphs(text: str) -> str:
             continue
         parts.append(f"<p>{html.escape(paragraph)}</p>")
     return "\n".join(parts)
-
-
-SPEAKER_LABEL_RE = re.compile(r"^([A-Z][A-Za-z0-9 .'\-&]{0,40}):\s+")
 
 
 def _split_long_paragraph(paragraph: str, target_chars: int = 500) -> list[str]:
@@ -1281,7 +1284,7 @@ def extract_transcript_from_html_document(url: str, raw_html: str) -> str | None
     path = urlparse(url).path.lower()
     title = soup.title.get_text(" ", strip=True).lower() if soup.title else ""
     if "/transcripts/" in path or " transcript" in title:
-        for selector in [".storytext", "article", "main"]:
+        for selector in PAGE_TRANSCRIPT_FALLBACK_SELECTORS:
             node = soup.select_one(selector)
             if not node:
                 continue
@@ -1298,7 +1301,8 @@ def download_text_transcript(url: str) -> str | None:
     except requests.RequestException:
         return None
     content_type = resp.headers.get("Content-Type", "")
-    if "html" in content_type.lower() or resp.text.lstrip().startswith("<!doctype html") or "<html" in resp.text[:500].lower():
+    head = resp.text[:500].lower().lstrip()
+    if "html" in content_type.lower() or head.startswith("<!doctype html") or "<html" in head:
         return extract_transcript_from_html_document(resp.url, resp.text)
     ext = transcript_blob_extension(url, resp.headers.get("Content-Type"))
     try:
@@ -2025,7 +2029,6 @@ def hydrate_metadata_from_html(url: str, html: str, state: RunState) -> dict:
             continue
         absolute = urljoin(url, href)
         label = link.get_text(" ", strip=True).lower()
-        href_lower = absolute.lower()
         if likely_transcript_link(absolute) or "transcript" in label:
             transcript_links.append(absolute)
         if likely_direct_media(absolute, None):
