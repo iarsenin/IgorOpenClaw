@@ -57,6 +57,12 @@ tests passed**, including 20 new original-audio tests. Syntax compilation and
 `git diff --check` also passed. The unchanged `/sum` plugin hash was checked
 again after programming; the helper and its existing tests were not edited.
 
+A clean `git archive` of implementation commit `8920a6b`, extracted into a fresh
+temporary directory, independently passed **31 committed Python tests and the
+same 17 command/integration tests**. The larger working-tree count includes
+uncommitted historical research tests; it is not presented as the release's
+committed test count. The clean check confirms no dependency on those files.
+
 The new renderer also reproduced the saved real interview pilot's eight retained
 intervals from the original recording: cut-only 524.884 seconds, 1.08× output
 486.4472916667 seconds. It verified the complete retained PCM outside crossfades
