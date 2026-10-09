@@ -1,5 +1,7 @@
 # IgorOpenClaw
 
+> **Current audio workflow — October 9, 2026:** `/shrink` edits the original recording and preserves its voices; `/sum` remains the transcript/summary/email command. See [the current guide](docs/shrink-original.md) and [deployment validation](docs/shrink-original-deployment.md). Earlier synthetic-voice and broad setup instructions describe historical work; do not use them to reset the current deployment.
+
 > **STATUS: ACTIVE (restored 2026-04-18, lean-cron mode as of 2026-05-14).** Gateway, LaunchAgents, and the local `/transcribe` plugin are running. Only 3 cron jobs are currently enabled (`post-restart-resume`, `api-spend-check`, `morning-briefing`); the rest are defined but disabled in `config/cron/jobs.json` to save tokens.
 > Keep `config/`, `workspace/`, and `scripts/` as the source of truth, then re-run `bash scripts/setup.sh` after runtime repairs or upgrades.
 

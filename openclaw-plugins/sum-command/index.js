@@ -1,0 +1,440 @@
+import { spawn, spawnSync } from "node:child_process";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+const PLUGIN_DIR = path.dirname(fileURLToPath(import.meta.url));
+const REPO_DIR = path.resolve(PLUGIN_DIR, "../..");
+const SCRIPT_PATH = path.join(REPO_DIR, "scripts", "transcribe-url.py");
+const FALLBACK_EMAIL = "igor.arsenin@gmail.com";
+const USER_COMMAND = "sum";
+const USAGE = `/${USER_COMMAND} <URL>`;
+const COMMAND_TIMEOUT_MS = 15 * 60 * 1000;
+const HELPER_MAX_ATTEMPTS = 2;
+const PYTHON_IMPORT_CHECK = "import requests, bs4; print('ok')";
+const EMPTY_CONFIG_SCHEMA = {
+    type: "object",
+    additionalProperties: false,
+    properties: {},
+};
+
+const OPENCLAW_CLI_CANDIDATES = [
+    "/opt/homebrew/bin/openclaw",
+    "/usr/local/bin/openclaw",
+];
+
+function definePluginEntry({ id, name, description, register, configSchema = EMPTY_CONFIG_SCHEMA }) {
+    return {
+        id,
+        name,
+        description,
+        configSchema,
+        register,
+    };
+}
+
+function resolveOpenclawCli() {
+    for (const candidate of OPENCLAW_CLI_CANDIDATES) {
+        if (fs.existsSync(candidate)) {
+            return candidate;
+        }
+    }
+    return "openclaw";
+}
+
+// Quick URL classification — do we expect a pre-made transcript (fast path,
+// usually seconds) or do we have to download audio and send it to a model
+// (slow path, several minutes)?
+function estimateTranscribeSpeed(url) {
+    const lc = url.toLowerCase();
+    if (/(?:^|\/\/)(?:www\.)?(?:youtube\.com|youtu\.be|m\.youtube\.com)\b/u.test(lc)) {
+        return { fast: true };
+    }
+    return {
+        fast: false,
+        ackText:
+            "Got it — transcribing now. This source has no pre-made captions, so I'll "
+            + "download the audio and run it through Gemini. Expect ~3–10 min depending "
+            + "on episode length. You'll get the email + a summary here when it's done.",
+    };
+}
+
+// WhatsApp senderId is a JID (`19179752041@s.whatsapp.net` or
+// `19179752041@c.us`). `openclaw message send --target` expects E.164
+// (`+19179752041`). Normalize so the ack actually lands.
+function normalizeWhatsappTarget(raw) {
+    const value = typeof raw === "string" ? raw.trim() : "";
+    if (!value) {
+        return null;
+    }
+    if (value.startsWith("+") && /^\+\d{6,15}$/u.test(value)) {
+        return value;
+    }
+    const atIdx = value.indexOf("@");
+    const localPart = atIdx === -1 ? value : value.slice(0, atIdx);
+    const digits = localPart.replace(/[^\d]/gu, "");
+    if (!digits || digits.length < 6 || digits.length > 15) {
+        return null;
+    }
+    return `+${digits}`;
+}
+
+function sendInterimAck(text, rawTarget, logger) {
+    if (!text) {
+        return { ok: false, reason: "no-text" };
+    }
+    const target = normalizeWhatsappTarget(rawTarget);
+    if (!target) {
+        return { ok: false, reason: `unparseable-target:${rawTarget ?? "<none>"}` };
+    }
+    try {
+        const child = spawn(
+            resolveOpenclawCli(),
+            [
+                "message", "send",
+                "--channel", "whatsapp",
+                "--target", target,
+                "--message", text,
+            ],
+            {
+                cwd: REPO_DIR,
+                stdio: ["ignore", "pipe", "pipe"],
+            },
+        );
+        let stderr = "";
+        child.stderr?.on("data", (chunk) => { stderr += String(chunk); });
+        child.on("error", (err) => {
+            logger?.warn?.(`sum-command ack spawn error: ${err.message}`);
+        });
+        child.on("close", (code) => {
+            if (code !== 0) {
+                logger?.warn?.(`sum-command ack exited code=${code} target=${target} stderr=${stderr.trim().slice(0, 300)}`);
+            } else {
+                logger?.info?.(`sum-command ack delivered to ${target}`);
+            }
+        });
+        return { ok: true, target };
+    } catch (error) {
+        return { ok: false, reason: error instanceof Error ? error.message : String(error) };
+    }
+}
+
+function parseDotEnv(dotenvPath) {
+    const env = {};
+    if (!fs.existsSync(dotenvPath)) {
+        return env;
+    }
+    for (const line of fs.readFileSync(dotenvPath, "utf8").split(/\r?\n/u)) {
+        const trimmed = line.trim();
+        if (!trimmed || trimmed.startsWith("#")) {
+            continue;
+        }
+        const match = trimmed.match(/^([A-Za-z_][A-Za-z0-9_]*)=(.*)$/u);
+        if (!match) {
+            continue;
+        }
+        let value = match[2] ?? "";
+        if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
+            value = value.slice(1, -1);
+        }
+        env[match[1]] = value.replace(/\\n/g, "\n");
+    }
+    return env;
+}
+
+function sanitizeText(value) {
+    return typeof value === "string" ? value.trim() : "";
+}
+
+function summarizeStream(text, limit = 240) {
+    const cleaned = String(text ?? "").replace(/\s+/gu, " ").trim();
+    if (!cleaned) {
+        return "";
+    }
+    return cleaned.length <= limit ? cleaned : `${cleaned.slice(0, limit - 1)}…`;
+}
+
+function parseHelperJsonOutput(stdout, stderr = "") {
+    const raw = String(stdout ?? "");
+    const trimmed = raw.trim();
+    if (!trimmed) {
+        const error = new Error("Helper produced empty stdout.");
+        error.code = "HELPER_EMPTY_STDOUT";
+        error.stdout = raw;
+        error.stderr = String(stderr ?? "");
+        throw error;
+    }
+
+    try {
+        return JSON.parse(trimmed);
+    } catch (initialError) {
+        const start = trimmed.indexOf("{");
+        const end = trimmed.lastIndexOf("}");
+        if (start !== -1 && end > start) {
+            try {
+                return JSON.parse(trimmed.slice(start, end + 1));
+            } catch {
+                // Fall through to the richer parse error below.
+            }
+        }
+
+        const error = new Error(
+            `Could not parse helper JSON output: ${initialError instanceof Error ? initialError.message : String(initialError)}`
+            + ` (stdout ${raw.length} bytes${stderr ? `, stderr ${String(stderr).length} bytes` : ""}`
+            + `${summarizeStream(raw) ? `, stdout=${JSON.stringify(summarizeStream(raw))}` : ""}`
+            + `${summarizeStream(stderr) ? `, stderr=${JSON.stringify(summarizeStream(stderr))}` : ""})`,
+        );
+        error.code = "HELPER_JSON_PARSE";
+        error.stdout = raw;
+        error.stderr = String(stderr ?? "");
+        throw error;
+    }
+}
+
+function shouldRetryHelper(error) {
+    if (!error || (error.code !== "HELPER_EMPTY_STDOUT" && error.code !== "HELPER_JSON_PARSE")) {
+        return false;
+    }
+    const stdout = String(error.stdout ?? "").trim();
+    const stderr = String(error.stderr ?? "").trim();
+    if (!stdout && !stderr) {
+        return true;
+    }
+    return stdout.includes("{") && !stdout.includes("}");
+}
+
+function extractSumUrl(body) {
+    const trimmed = sanitizeText(body);
+    if (!trimmed) {
+        return null;
+    }
+    const match = trimmed.match(/^\/sum(?:\s+(\S+))?(?:\s|$)/isu);
+    if (!match) {
+        return null;
+    }
+    const rawArg = sanitizeText(match[1] ?? "");
+    return rawArg || "";
+}
+
+function buildReply(result) {
+    const summary = sanitizeText(result.whatsapp_summary) || sanitizeText(result.title) || "Transcript request finished.";
+    if (result.transcript_available) {
+        if (result.email_sent) {
+            return `${summary}\n\nFull transcript emailed to Igor.`;
+        }
+        return `${summary}\n\nI got the transcript, but the email send failed.`;
+    }
+    return `${summary}\n\nI couldn't get a full transcript, so I didn't send an email.`;
+}
+
+function resolvePythonCommand(env) {
+    const candidates = [
+        env.PYTHON3_PATH,
+        env.PYTHON_PATH,
+        "python3",
+        "/opt/homebrew/bin/python3",
+        "/usr/local/bin/python3",
+        "/usr/bin/python3",
+    ].filter(Boolean);
+
+    for (const candidate of candidates) {
+        const probe = spawnSync(candidate, ["-c", PYTHON_IMPORT_CHECK], {
+            cwd: REPO_DIR,
+            env,
+            encoding: "utf8",
+        });
+        if (probe.status === 0 && String(probe.stdout || "").trim() === "ok") {
+            return candidate;
+        }
+    }
+    return null;
+}
+
+function runHelperOnce(url, options = {}) {
+    return new Promise((resolve, reject) => {
+        const env = {
+            ...parseDotEnv(path.join(REPO_DIR, ".env")),
+            ...process.env,
+            ...(options.env ?? {}),
+        };
+        env.HOME ||= os.homedir();
+        const emailTo = (
+            sanitizeText(options.emailTo)
+            || sanitizeText(env.SUM_EMAIL_TO)
+            || sanitizeText(env.TRANSCRIBE_EMAIL_TO)
+            || FALLBACK_EMAIL
+        );
+        const pythonCommand = options.pythonCommand ?? resolvePythonCommand(env);
+        const spawnImpl = options.spawnImpl ?? spawn;
+        const scheduleTimeout = options.setTimeoutImpl ?? setTimeout;
+        const cancelTimeout = options.clearTimeoutImpl ?? clearTimeout;
+
+        if (!pythonCommand) {
+            reject(new Error("Python runtime for /sum is missing requests/beautifulsoup4. Run scripts/setup.sh again or install them for the gateway Python."));
+            return;
+        }
+        const child = spawnImpl(
+            pythonCommand,
+            [SCRIPT_PATH, "run", url, "--email-to", emailTo, "--json"],
+            {
+                cwd: REPO_DIR,
+                env,
+                stdio: ["ignore", "pipe", "pipe"],
+            },
+        );
+
+        let stdout = "";
+        let stderr = "";
+        let timedOut = false;
+        const timer = scheduleTimeout(() => {
+            timedOut = true;
+            child.kill("SIGTERM");
+        }, COMMAND_TIMEOUT_MS);
+
+        child.stdout.on("data", (chunk) => {
+            stdout += String(chunk);
+        });
+        child.stderr.on("data", (chunk) => {
+            stderr += String(chunk);
+        });
+        child.on("error", (error) => {
+            cancelTimeout(timer);
+            reject(error);
+        });
+        child.on("close", (code) => {
+            cancelTimeout(timer);
+            if (timedOut) {
+                reject(new Error("Transcription timed out before the helper finished."));
+                return;
+            }
+            if (code !== 0) {
+                reject(new Error(sanitizeText(stderr) || `Helper exited with code ${code}.`));
+                return;
+            }
+            try {
+                resolve(parseHelperJsonOutput(stdout, stderr));
+            } catch (error) {
+                reject(error);
+            }
+        });
+    });
+}
+
+async function runHelper(url, options = {}) {
+    let lastError = null;
+    for (let attempt = 1; attempt <= HELPER_MAX_ATTEMPTS; attempt += 1) {
+        try {
+            return await runHelperOnce(url, options);
+        } catch (error) {
+            lastError = error;
+            if (attempt >= HELPER_MAX_ATTEMPTS || !shouldRetryHelper(error)) {
+                throw error;
+            }
+        }
+    }
+    throw lastError ?? new Error("Transcription helper failed unexpectedly.");
+}
+
+export default definePluginEntry({
+    id: "sum-command",
+    name: "Sum Command",
+    description: "Deterministic /sum command that runs the repo transcript helper directly.",
+    register(api) {
+        api.on("before_dispatch", async (event) => {
+            // Let the independent shrink plugin queue long audio jobs.
+            if (typeof event.body === "string" && /^\s*\/shrink(?:\s|$)/iu.test(event.body)) {
+                return undefined;
+            }
+            const url = extractSumUrl(event.body);
+            if (url === null) {
+                return {
+                    handled: true,
+                    text: `Use ${USAGE} for a transcript and summary, or /shrink <URL> for a shorter audio edition.`
+                };
+            }
+            api.logger.info?.(`sum-command intercepting before_dispatch for ${url || "<missing-url>"}`);
+            if (event.isGroup) {
+                return {
+                    handled: true,
+                    text: `Use ${USAGE} in a direct chat with me so I can send the summary and transcript package safely.`
+                };
+            }
+            if (!url) {
+                return {
+                    handled: true,
+                    text: `Usage: ${USAGE}`
+                };
+            }
+            if (!/^https?:\/\//iu.test(url)) {
+                return {
+                    handled: true,
+                    text: `Usage: ${USAGE} (the argument must be a full http/https URL)`
+                };
+            }
+            if (!fs.existsSync(SCRIPT_PATH)) {
+                return {
+                    handled: true,
+                    text: "The transcription helper is missing from the repo checkout on this machine."
+                };
+            }
+            const speed = estimateTranscribeSpeed(url);
+            if (!speed.fast) {
+                const rawTarget = sanitizeText(event.senderId) || sanitizeText(event.from);
+                const ack = sendInterimAck(speed.ackText, rawTarget, api.logger);
+                if (ack.ok) {
+                    api.logger.info?.(`sum-command queued slow-path ETA ack for ${url} -> ${ack.target}`);
+                } else {
+                    api.logger.warn?.(`sum-command could not queue ETA ack for ${url}: ${ack.reason}`);
+                }
+            }
+            try {
+                const result = await runHelper(url);
+                return {
+                    handled: true,
+                    text: buildReply(result)
+                };
+            } catch (error) {
+                const message = error instanceof Error ? error.message : String(error);
+                api.logger.error?.(`sum-command before_dispatch failed for ${url}: ${message}`);
+                return {
+                    handled: true,
+                    text: `I couldn't finish the transcript run.\n\n${message}`
+                };
+            }
+        });
+
+        api.registerCommand({
+            name: USER_COMMAND,
+            description: "Fetch or generate a full transcript for a media URL, then email it when available.",
+            acceptsArgs: true,
+            handler: async (ctx) => {
+                const url = sanitizeText(ctx.args);
+                if (!url) {
+                    return { text: `Usage: ${USAGE}` };
+                }
+                if (!/^https?:\/\//iu.test(url)) {
+                    return { text: `Usage: ${USAGE} (the argument must be a full http/https URL)` };
+                }
+                if (!fs.existsSync(SCRIPT_PATH)) {
+                    return { text: "The transcription helper is missing from the repo checkout on this machine." };
+                }
+                try {
+                    const result = await runHelper(url);
+                    return { text: buildReply(result) };
+                } catch (error) {
+                    const message = error instanceof Error ? error.message : String(error);
+                    api.logger.error?.(`sum-command failed for ${url}: ${message}`);
+                    return { text: `I couldn't finish the transcript run.\n\n${message}` };
+                }
+            },
+        });
+    },
+});
+
+export {
+    extractSumUrl,
+    parseHelperJsonOutput,
+    runHelper,
+    shouldRetryHelper,
+};

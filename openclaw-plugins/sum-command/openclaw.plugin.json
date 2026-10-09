@@ -1,0 +1,22 @@
+{
+  "id": "sum-command",
+  "enabledByDefault": true,
+  "name": "Sum Command",
+  "description": "Deterministic /sum command that runs the repo transcript helper directly.",
+  "activation": {
+    "onStartup": true,
+    "onCommands": ["sum"],
+    "onCapabilities": ["hook"]
+  },
+  "commandAliases": [
+    {
+      "name": "sum",
+      "kind": "runtime-slash"
+    }
+  ],
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {}
+  }
+}

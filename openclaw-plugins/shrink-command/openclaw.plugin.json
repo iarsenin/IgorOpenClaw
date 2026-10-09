@@ -1,0 +1,9 @@
+{
+  "id": "shrink-command",
+  "name": "Shrink Command",
+  "description": "Original-voice podcast editing with playable audio returned to the requesting chat; no speech synthesis.",
+  "enabledByDefault": true,
+  "activation": { "onStartup": true, "onCommands": ["shrink"], "onCapabilities": ["hook"] },
+  "commandAliases": [{ "name": "shrink", "kind": "runtime-slash" }],
+  "configSchema": { "type": "object", "additionalProperties": false, "properties": {} }
+}
