@@ -75,6 +75,16 @@ Both primary failures and fallback attempts are retained, including unknown usag
 Structured provider wait advice is recorded as supplied, never invented.
 The worker returns a failure notice and does not publish rejected audio.
 
+The command launcher selects a Python interpreter with `requests` and
+`beautifulsoup4`, using the same resolver as `/sum`. Each launch saves private
+started/queued/failed receipts under
+`~/.openclaw/state/shrink-launch-evidence/` (`SHRINK_LAUNCH_LOG_DIR` overrides it).
+Failures retain exit code, signal and full redacted stdout/stderr. The chat gets
+only a diagnostic ID, never a raw traceback or credentials. A failed or ambiguous
+launch is not automatically repeated. `python3 scripts/shrink_original.py
+enqueue-check` tests production queue locking and atomic IO without creating a
+runnable job, calling a provider or sending a message.
+
 To retry after a diagnosed failure, explicitly create a new job/directory. Do not
 delete old attempts to reset a retry counter. Successful delivery receipts are
 reused; a crash between sending and saving completion leaves delivery uncertain.
@@ -136,6 +146,38 @@ cover the exact ASR text; no guessed words, translation or timestamp repair is
 inserted. English is explicit by default after a short English test was
 incorrectly autodetected as Welsh. Other languages require the corresponding
 configuration, or deliberate `auto` selection.
+
+Ten-minute 24kHz PCM WAVs can exceed the transcription API's
+[25 MB upload limit](https://developers.openai.com/api/docs/guides/speech-to-text).
+Oversized ASR inputs are therefore packed as supported lossless FLAC. A full
+decode must match every original PCM sample, format and frame before upload;
+the original and actual listening inputs are not changed or resampled. The
+packing receipt is mechanical integrity evidence, not lexical or sound approval.
+Literal empty, clock-valid Whisper timestamp records are preserved in raw
+evidence but do not become invented words. All nonempty words must still cover
+the exact full ASR text; unknown or malformed clock/word data remains held.
+Finite in-range word intervals may overlap. Their reported values and exact text
+order are retained, not sorted or retimed. Cut envelopes cover all selected
+intervals and continue to reject overlap with retained speech and unsafe margins.
+
+Long-episode planning and complete text comparisons use lossless column encoding
+instead of repeating JSON keys per word. The final sound review is independently
+audio-only: it receives the actual outgoing encode decoded to WAV, its part
+interval and listening instructions, not expected words, speaker identities or
+an earlier verdict. Complete navigation, retained-word context and ID bindings
+remain saved for the separate text/history audit; they are not sent to the final
+listener. No source word, timestamp or acceptance rule is softened to fit.
+
+The OpenAI final listener returns ordinary text in six strictly framed sections
+(coverage, verdict, issues, uncertainties and the two audible boundary phrases).
+Its audio model supports text output and function calling, but does not promise
+Structured Outputs. Parsing preserves each issue/uncertainty block verbatim;
+incomplete coverage, unexpected/missing sections, refusal, truncation or an
+instruction echoed as speech blocks publication. It neither repairs a malformed
+old JSON tool call nor asks a text-only model to invent acoustic approval.
+Any saved failed request stays held. Passing short tests is not proof that a
+full episode will pass listening, and a valid negative review is not a startup
+or configuration failure.
 
 Current [published pricing](https://developers.openai.com/api/docs/pricing) is
 $0.10/M input and $0.50/M output tokens for this text model, $32/M audio-input

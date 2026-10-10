@@ -175,3 +175,140 @@ The working tree passed **144 Python tests and 17 JavaScript tests**. Both clean
 archives passed without uncommitted research, media, live credentials or network
 access. The last update only honors the explicit fallback opt-out and records
 these checks; it does not change the default-enabled live model requests.
+
+## Production launcher repair and full-episode continuation
+
+The subsequent user-reported `/shrink` failure occurred at the launcher, before
+any job or provider attempt existed. Its Python stderr was discarded by the
+plugin, and gateway stderr was configured as `/dev/null`; the exact original
+exception therefore cannot be reconstructed honestly. Dependency-aware Python
+selection is now shared with `/sum`. Redacted private launch receipts preserve
+exit code, signal, stdout and stderr, while chat receives a diagnostic ID only.
+The local gateway LaunchAgent now retains private stderr rather than discarding
+it. No credentials or global Python packages were changed.
+
+The new `enqueue-check` command exercised the **actual production queue**:
+locking, exclusive probe creation, atomic JSON write/read and exact probe cleanup,
+with zero provider requests and no runnable job. Then the actual OpenClaw plugin
+loader/native command path, using the gateway's environment, successfully saved
+the user's exact request as job `20261010-114130-01961acd` while its worker was
+temporarily held. This is a real enqueue check, not merely a mocked queue receipt.
+
+Full-length inspection exposed an additional integration limit: a 600-second
+24kHz PCM WAV is larger than OpenAI's 25 MB transcription ceiling. The API
+[reference supports FLAC](https://developers.openai.com/api/reference/resources/audio/subresources/transcriptions/methods/create),
+so oversized inputs are losslessly packed and fully decoded for byte-identical
+PCM verification before upload. No source change, resampling, lossy fallback or
+clock shift is allowed. A real full ten-minute upload used 16,365,504 bytes and
+Whisper returned HTTP200 with a 600-second response. Its three empty-text
+timestamp entries caused the old parser to hold the attempt. The new parser
+excludes only literal empty, finite/in-range metadata entries and still requires
+the complete nonempty word sequence to cover the exact ASR text. Blank entries
+are not evidence of speech absence. All 1,950 actual word records and the full
+text remained unchanged in this response.
+
+That failed job/raw/upload/usage history remains intact. A separately bound
+continuation, `20261010-115812-1cb08bb6`, copied the same source bytes and reused
+the completed first response after the pure adapter fix. It did not repeat the
+first ASR call or the observed Google monthly-cap request. Its first-stage proof
+binds the full parent request/packing receipts, raw hash, original PCM and
+reparsed result; it claims no source or sound acceptance. Parent usage remains
+owned by the parent, never counted twice or treated as free.
+
+Prompt payloads now losslessly factor repeated navigation keys into named
+columns. The source and retained text comparisons still receive every word,
+ID, segment and local-speaker value; planning/cut listening keep unrounded times.
+The final listener gets every retained word with local-speaker runs instead of
+repeated per-word timing dictionaries. The full raw/navigation/ID data remains
+saved, and all same-input listening, coverage and uncertainty gates are unchanged.
+This addresses long-episode context size without truncating the transcript or
+substituting a summary for it.
+
+The local suite passed **151 Python tests and 21 JavaScript command tests**,
+including real ten-minute lossless packing, preserved empty-metadata evidence,
+missing-negative/bad-clock rejection, exact compact-view reconstruction, private
+credential redaction and no launcher retry. The real user episode is 6,432.7866
+seconds long; it is not one of the old fixed benchmark excerpts. It continues
+under its own normal production gates. A running job is not accepted audio or
+personal human listening, and no quality failure is overridden to finish it.
+
+The continuation exposed one further metadata assumption: at adjacent words in
+ASR block 5, the reported start decreased by about 20 ms while both intervals
+were finite and inside the physical input. Word intervals may overlap; the
+transcript's character order remains authoritative navigation order. The adapter
+now preserves those literal values and text order without sorting, shifting or
+clamping. A proposed cut uses the complete selected interval envelope and still
+rejects any retained-speech overlap or unsafe neighbor margin. Range, character,
+coverage, original-audio and final-listening gates remain strict.
+
+Job `20261010-115812-1cb08bb6` is preserved as failed, with all six complete
+ASR responses and usage. A further separately bound continuation,
+`20261010-121221-1b9ac979`, reuses **all six** exact responses/input/packing proofs
+and leaves their words and timestamps unchanged. Only the remaining source
+blocks need new ASR requests. No failed or paid ASR request was blindly repeated.
+The latest local checks passed **153 Python tests and 21 command tests**. Clean
+release checks and the real episode's eventual outcome are recorded separately;
+neither metadata adaptation implies sound or source approval.
+
+### Final listening: format defect and held quality results
+
+The full continuation completed all **11 source ASR blocks / 20,413 navigation
+words**, the complete text comparison and the original-voice render. Its author
+selected **zero semantic cuts and zero pause edits**. The resulting 1.08× version
+is approximately 99.28 minutes versus the 107.21-minute original: tempo-only
+compression, not a successfully abridged narrative. It has not been delivered.
+
+Final listening exposed a report that echoed a system instruction as supposedly
+heard speech and a subsequent malformed JSON tool call. The echo is now rejected
+even when the model says `pass=true`. A separately history-bound audio-only
+diagnosis kept the same outgoing physical bytes, without another download, ASR
+or render. One report parsed and passed. Its next report was malformed **and**
+contained adverse observations and uncertainty; no format correction could have
+made that an accepted result. It latched all remaining peer requests. The parent
+and diagnosis raw responses, failed attempts, original code archive and usage
+ledgers remain intact. No audio was sent and no failed provider request replayed.
+
+The final OpenAI interface now uses native plain text instead of best-effort JSON
+function arguments. Six exact section headings, explicit complete coverage,
+verdict and verbatim issues/uncertainties are parsed locally. Missing, duplicate,
+unexpected or incomplete sections remain held; no JSON repair or extra
+text-model acoustic adjudication runs. The
+[audio model's documented capabilities](https://developers.openai.com/api/docs/models/gpt-audio-1.5)
+include text output and function calling, not guaranteed Structured Outputs.
+
+A fresh real short-recording release check returned HTTP200 with correctly framed
+plain text. It reported a possible speaker-change/join issue, which the local
+gate preserved and rejected. This confirms the live transport/parser/hold path,
+**not** audio acceptance or personal listening. Its second fixture was not called
+after that hold. Earlier two-fixture `/sum` and `/shrink` checks remain historical
+evidence for their exact prior release, not approval of this changed listener.
+Normal speaker changes can generate conservative listener findings; they are not
+automatically waived or labelled acoustically unresolvable. This episode still
+needs a justified quality outcome; the present release fixes startup and report
+handling, not a guarantee that every episode will be accepted.
+
+Latest working-tree regression checks: **161 Python tests + 21 JavaScript tests**,
+with network disabled for the Python run. `/sum` implementation is unchanged;
+only its existing pure environment/interpreter helpers are exported for reuse.
+Both command registration orders, enqueue failures and `/sum` transcript/email
+dispatch were rechecked. Runtime artifacts, private launch receipts, source
+recordings and provider keys are excluded from the release.
+
+The ordinary gateway restart utility regenerated its LaunchAgent with discarded
+stderr. The final reload therefore uses the exact validated existing LaunchAgent
+with private stderr restored, followed by a connectivity/WhatsApp probe. No
+credentials, gateway sessions or global dependencies are reset. This local
+service configuration is not a committed secret or a claim about the unrecoverable
+original launcher exception.
+
+A clean archive of staged tree `8e01cfe4b1a56664ee2e7cba8460800126b46889`
+passed **87 committed Python tests and 21 JavaScript tests**, independently of
+uncommitted research. The Python suite had network disabled. All eight staged
+files were checked against configured credential values; no matches were found.
+After the final reload, gateway PID 70861 and worker PID 71032 were observed.
+Gateway connectivity and WhatsApp health were good, gateway private stderr had
+no error text, worker stderr was empty and no queued/running shrink job remained.
+The production `enqueue-check` succeeded again with zero provider requests.
+Neither a held user job nor the held short listening test was automatically
+requeued. The archive hash refers to the tested code tree before this final
+documentation-only observation was appended.

@@ -433,6 +433,8 @@ export default definePluginEntry({
 });
 
 export {
+    parseDotEnv,
+    resolvePythonCommand,
     extractSumUrl,
     parseHelperJsonOutput,
     runHelper,

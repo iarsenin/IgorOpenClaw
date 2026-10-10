@@ -4,6 +4,8 @@ import importlib.util
 import json
 from pathlib import Path
 import tempfile
+import shutil
+import wave
 import unittest
 from unittest import mock
 
@@ -25,12 +27,61 @@ def report(value=PASS, finish="tool_calls", **message):
         "usage": {"prompt_tokens": 10, "completion_tokens": 10}}
 
 
+AUDIT = ("[COVERAGE]\nENTIRE ATTACHED AUDIO REVIEWED\n[VERDICT]\nPASS\n[ISSUES]\nNONE\n"
+         "[UNCERTAINTIES]\nNONE\n[HEARD_START]\nNo, not three point seven.\n[HEARD_END]\nThat's what I heard.")
+
+
 class OpenAITests(unittest.TestCase):
+    def test_final_audio_uses_native_plain_text_not_best_effort_json_tools(self):
+        original.os.environ["SHRINK_PROVIDER"] = "openai"
+        audio = self.root / "plain.wav"; audio.write_bytes(b"exact-final-input")
+        payload = {"choices": [{"finish_reason": "stop", "message": {"content": AUDIT}}]}
+        with mock.patch.object(original.requests, "request", return_value=response(payload)) as call:
+            result = original.Client(self.root).generate(self.root / "audit", "actual audio", original.AUDIO_SCHEMA, "listen", audio)
+        original.require_pass(result, [])
+        body = call.call_args.kwargs["json"]
+        self.assertNotIn("tools", body); self.assertNotIn("tool_choice", body)
+        self.assertEqual(body["messages"][0]["content"], original.AUDIO_TEXT_SYSTEM)
+        self.assertEqual(base64.b64decode(body["messages"][1]["content"][1]["input_audio"]["data"]), audio.read_bytes())
+        self.assertEqual(original.read(self.root / "audit/openai/raw.json"), payload)
+
+    def test_plain_audit_keeps_every_issue_and_uncertainty_verbatim(self):
+        issue = "An unclear negative.\nAnother overlapping speaker."
+        uncertainty = "Could not distinguish use from used."
+        text = AUDIT.replace("\nPASS\n", "\nFAIL\n").replace("[ISSUES]\nNONE", "[ISSUES]\n" + issue)
+        text = text.replace("[UNCERTAINTIES]\nNONE", "[UNCERTAINTIES]\n" + uncertainty)
+        value = original.parse_audio_text_report(text)
+        self.assertEqual(value["issues"], [issue]); self.assertEqual(value["uncertainties"], [uncertainty])
+        with self.assertRaises(original.ShrinkError):original.require_pass(value, [])
+        with self.assertRaises(original.ShrinkError):original.require_pass({**value, "pass": True}, [])
+
+    def test_plain_audit_rejects_missing_duplicate_fenced_incomplete_or_invented_sections(self):
+        for value in (None, "", "preface\n" + AUDIT, "```\n" + AUDIT + "\n```",
+                      AUDIT.replace("ENTIRE ATTACHED AUDIO REVIEWED", "INCOMPLETE"),
+                      AUDIT.replace("\nPASS\n", "\nprobably pass\n"),
+                      AUDIT.replace("[HEARD_END]", "[OTHER]"),
+                      AUDIT.replace("[HEARD_END]", "[ISSUES]\nNONE\n[HEARD_END]"),
+                      AUDIT.replace("[HEARD_START]\nNo, not three point seven.", "[HEARD_START]\n")):
+            with self.subTest(value=value), self.assertRaises(original.ShrinkError):
+                original.parse_audio_text_report(value)
+
+    def test_plain_audio_incomplete_refusal_function_audio_output_and_json_are_held(self):
+        original.os.environ["SHRINK_PROVIDER"] = "openai"
+        audio = self.root / "plain.wav"; audio.write_bytes(b"wav")
+        for index, payload in enumerate((report(), {"choices": [{"finish_reason": "length", "message": {"content": AUDIT}}]},
+            {"choices": [{"finish_reason": "stop", "message": {"content": AUDIT, "refusal": "no"}}]},
+            {"choices": [{"finish_reason": "stop", "message": {"content": AUDIT, "audio": {"id": "no"}}}]},
+            {"choices": [{"finish_reason": "stop", "message": {"content": json.dumps(PASS)}}]})):
+            with mock.patch.object(original.requests, "request", return_value=response(payload)) as call, self.assertRaises(original.ShrinkError):
+                original.Client(self.root).generate(self.root / f'held-{index}', "listen", original.AUDIO_SCHEMA, "listen", audio)
+            call.assert_called_once()
+            self.assertEqual(original.read(self.root / f'held-{index}/openai/raw.json'), payload)
+
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.root = Path(self.temp.name)
         self.env = mock.patch.dict(original.os.environ, {"GOOGLE_API_KEY": "test-google", "OPENAI_API_KEY": "test-openai",
-            "SHRINK_PROVIDER": "gemini", "SHRINK_OPENAI_FALLBACK": "1"}, clear=True)
+            "SHRINK_PROVIDER": "gemini", "SHRINK_OPENAI_FALLBACK": "1", "PATH": original.os.environ.get("PATH", "/opt/homebrew/bin:/usr/bin:/bin")}, clear=True)
         self.env.start()
         self.loader = mock.patch.object(original, "load_env")
         self.loader.start()
@@ -121,8 +172,26 @@ class OpenAITests(unittest.TestCase):
             self.assertFalse(body["store"])
             self.assertNotIn("audio", body)
             self.assertNotIn("reasoning_effort", body)
+            self.assertEqual(body["temperature"], 0.1)
+            self.assertEqual(body["messages"][0]["content"], original.AUDIO_SYSTEM)
+            self.assertNotIn("strict", body["tools"][0]["function"])
             data = body["messages"][1]["content"][1]["input_audio"]["data"]
             self.assertEqual(base64.b64decode(data), audio.read_bytes())
+
+    def test_malformed_audio_json_is_preserved_not_fixed_or_retried(self):
+        original.os.environ["SHRINK_PROVIDER"] = "openai"
+        audio = self.root / "actual.wav"; audio.write_bytes(b"wav")
+        payload = report(finish="stop")
+        payload["choices"][0]["message"]["tool_calls"][0]["function"]["arguments"] = '{"pass": true,}'
+        client = original.Client(self.root)
+        with mock.patch.object(original.requests, "request", return_value=response(payload)) as call:
+            for _ in range(2):
+                with self.assertRaises(original.ShrinkError):
+                    original.once(self.root, "audio-review", {"input": original.sha(audio)},
+                        lambda root: client.generate(root, "listen", original.AUDIO_SCHEMA, client.listen, audio))
+            call.assert_called_once()
+        self.assertEqual(original.read(self.root / "stages/audio-review/openai/raw.json"), payload)
+        self.assertEqual(original.read(self.root / "stages/audio-review/attempt.json")["status"], "failed")
 
     def test_text_model_does_not_receive_audio_only_modalities(self):
         original.os.environ["SHRINK_PROVIDER"] = "openai"
@@ -193,6 +262,52 @@ class OpenAITests(unittest.TestCase):
 
     def test_primary_critic_is_explicit_gemini_3_6_not_redirected_3_5(self):
         self.assertEqual(original.Client(self.root).critic, "gemini-3.6-flash")
+
+    @unittest.skipUnless(shutil.which("ffmpeg"), "FFmpeg required")
+    def test_full_ten_minute_pcm_is_losslessly_packed_under_upload_limit(self):
+        source = self.root / "ten-minute.wav"
+        # Deliberately synthetic silence for codec mechanics, not a quality case.
+        with wave.open(str(source), "wb") as stream:
+            stream.setparams((1, 2, original.RATE, 0, "NONE", "not compressed"))
+            for _ in range(600):
+                stream.writeframes(b"\0\0" * original.RATE)
+        before = original.sha(source)
+        self.assertGreater(source.stat().st_size, 25_000_000)
+        upload, mime = original.openai_asr_media(self.root / "packed", source)
+        self.assertEqual(mime, "audio/flac")
+        self.assertLess(upload.stat().st_size, 25_000_000)
+        receipt = original.read(self.root / "packed/asr-upload-receipt.json")
+        self.assertEqual(receipt["frames"], 600 * original.RATE)
+        self.assertTrue(receipt["pcm_byte_identical"])
+        self.assertFalse(receipt["resampled"])
+        self.assertFalse(receipt["lexical_evidence_claimed"])
+        self.assertEqual(original.sha(source), before)
+
+    def test_short_upload_is_not_reencoded(self):
+        source = self.root / "short.wav"; source.write_bytes(b"short fixture")
+        with mock.patch.object(original, "command") as command:
+            self.assertEqual(original.openai_asr_media(self.root / "unused", source), (source, "audio/wav"))
+            command.assert_not_called()
+
+    def test_empty_timestamp_metadata_preserves_every_lexical_word(self):
+        payload = {"language": "english", "duration": 2, "text": "No, not 3.7.", "words": [
+            {"word": "No,", "start": .1, "end": .3}, {"word": "", "start": .3, "end": .4},
+            {"word": "not", "start": .4, "end": .6}, {"word": "3.7.", "start": .7, "end": 1.2}]}
+        parsed = original.parse_openai_transcript(payload, "en", self.root)
+        self.assertEqual(parsed["text"], payload["text"])
+        self.assertEqual([w["text"] for w in parsed["words"]], ["No,", "not", "3.7."])
+        receipt = original.read(self.root / "empty-word-metadata.json")
+        self.assertEqual(receipt["excluded_entries"], [{"index": 1, "entry": payload["words"][1]}])
+        self.assertFalse(receipt["speech_absence_claimed"])
+
+    def test_empty_metadata_never_hides_missing_negative_or_bad_clock(self):
+        payload = {"duration": 2, "text": "not three", "words": [{"word": "", "start": 0, "end": .1},
+            {"word": "three", "start": .1, "end": 1}]}
+        with self.assertRaises(original.ShrinkError):original.parse_openai_transcript(payload)
+        for item in [{"word": "", "start": -1, "end": 1}, {"word": "", "start": 1, "end": 3},
+                     {"word": "", "start": True, "end": 1}, {"word": "", "start": float("nan"), "end": 1}]:
+            with self.assertRaises(original.ShrinkError):
+                original.parse_openai_transcript({"duration": 2, "text": "three", "words": [item, {"word": "three", "start": 1, "end": 2}]})
 
     def test_started_openai_request_is_not_replayed(self):
         original.os.environ["SHRINK_PROVIDER"] = "openai"

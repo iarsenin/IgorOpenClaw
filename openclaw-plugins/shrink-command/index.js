@@ -1,6 +1,10 @@
 import { execFile } from "node:child_process";
+import fs from "node:fs";
+import os from "node:os";
+import { createHash, randomUUID } from "node:crypto";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { parseDotEnv, resolvePythonCommand } from "../sum-command/index.js";
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const HELPER = path.join(REPO, "scripts/shrink_original.py");
@@ -39,26 +43,64 @@ function whatsappTarget(event) {
     return null;
 }
 
-function queue(url, target, execImpl = execFile) {
+function redactDiagnostic(value, env) {
+    let text = String(value ?? "");
+    for (const [key, secret] of Object.entries(env)) {
+        if (/(?:KEY|TOKEN|PASSWORD|SECRET)/iu.test(key) && typeof secret === "string" && secret.length >= 4) {
+            text = text.split(secret).join("<redacted>");
+        }
+    }
+    return text.replace(/([?&](?:key|token|access_token|api_key)=)[^\s&"']+/giu, "$1<redacted>")
+        .replace(/Bearer\s+[^\s"']+/giu, "Bearer <redacted>")
+        .replace(/\bsk-(?:proj-)?[A-Za-z0-9_-]{12,}/gu, "<redacted>");
+}
+
+function writeLaunchDiagnostic(id, phase, record, env) {
+    const root = path.resolve(env.SHRINK_LAUNCH_LOG_DIR || path.join(os.homedir(), ".openclaw/state/shrink-launch-evidence"));
+    fs.mkdirSync(root, { recursive: true, mode: 0o700 });
+    const filename = path.join(root, `${id}-${phase}.json`);
+    const scrub = (value) => typeof value === "string" ? redactDiagnostic(value, env)
+        : Array.isArray(value) ? value.map(scrub)
+            : value && typeof value === "object" ? Object.fromEntries(Object.entries(value).map(([key, item]) => [key, scrub(item)])) : value;
+    const data = scrub(record);
+    fs.writeFileSync(filename, JSON.stringify(data, null, 2), { flag: "wx", mode: 0o600 });
+    return filename;
+}
+
+function queue(url, target, execImpl = execFile, options = {}) {
     return new Promise((resolve, reject) => {
-        execImpl(process.env.PYTHON3_PATH || "python3", [HELPER, "enqueue", url, "--target", target],
-            { cwd: REPO, env: process.env, timeout: 20000, maxBuffer: 64 * 1024 },
+        const id = randomUUID();
+        let env = { ...process.env, ...(options.env ?? {}) };
+        const record = { id, at: new Date().toISOString(), helper: HELPER, cwd: REPO,
+            url_sha256: createHash("sha256").update(url).digest("hex"),
+            target_sha256: createHash("sha256").update(target).digest("hex") };
+        const persist = (phase, extra) => {
+            try { return (options.logImpl ?? writeLaunchDiagnostic)(id, phase, { ...record, ...extra }, env); }
+            catch (error) { options.logger?.error?.(`shrink launch ${id}: private logging failed (${error.code || error.name}).`); return null; }
+        };
+        const fail = (error, stdout, stderr) => {
+            persist("failed", { status: "failed", python: record.python, error: {
+                code: error.code, signal: error.signal, killed: error.killed, message: error.message }, stdout, stderr });
+            options.logger?.error?.(`shrink launch ${id} failed (code=${error.code ?? "unknown"}, signal=${error.signal ?? "none"}); see private launch evidence.`);
+            reject(new Error(`The /shrink launcher failed. Private diagnostic: ${id}. No audio job was confirmed; it will not retry automatically.`));
+        };
+        try {
+            env = { ...parseDotEnv(path.join(REPO, ".env")), ...env };
+            record.python = (options.resolvePythonImpl ?? resolvePythonCommand)(env);
+            if (!record.python) throw new Error("No Python interpreter with requests and beautifulsoup4 is available.");
+            persist("started", { status: "started", python: record.python });
+            execImpl(record.python, [HELPER, "enqueue", url, "--target", target],
+            { cwd: REPO, env, timeout: 20000, maxBuffer: 64 * 1024 },
             (error, stdout, stderr) => {
-                if (error) {
-                    // The helper emits deliberately sanitized, actionable errors.
-                    const detail = stderr?.trim();
-                    reject(new Error(detail && !detail.includes("\n") && detail.length < 400
-                        ? detail : "Could not start the worker. Check its Python and Gemini configuration."));
-                    return;
-                }
+                if (error) return fail(error, stdout, stderr);
                 try {
                     const result = JSON.parse(stdout);
-                    if (!result.id || result.status !== "queued") throw new Error();
+                    if (typeof result.id !== "string" || !result.id || result.status !== "queued") throw new Error("The worker did not return a complete queued receipt.");
+                    persist("queued", { status: "queued", job_id: result.id, python: record.python, stdout, stderr });
                     resolve(result);
-                } catch {
-                    reject(new Error("The /shrink worker did not confirm the queued request."));
-                }
+                } catch (error) { fail(error, stdout, stderr); }
             });
+        } catch (error) { fail(error, "", ""); }
     });
 }
 
@@ -82,16 +124,17 @@ export default {
     description: "Chronological original-voice podcast editing with playable chat audio; no synthetic speech.",
     configSchema: { type: "object", additionalProperties: false, properties: {} },
     register(api) {
-        api.on("before_dispatch", (event) => handle(event));
+        const launch = (url, target) => queue(url, target, execFile, { logger: api.logger });
+        api.on("before_dispatch", (event) => handle(event, launch));
         api.registerCommand({
             name: "shrink", description: "Edit a podcast and return a shorter audio edition in this chat.", acceptsArgs: true,
             channels: ["whatsapp"], requireAuth: true,
             handler: async (ctx) => {
-                const result = await handle({ ...ctx, body: `/shrink ${ctx.args ?? ""}` });
+                const result = await handle({ ...ctx, body: `/shrink ${ctx.args ?? ""}` }, launch);
                 return { text: result.text };
             },
         });
     },
 };
 
-export { parseShrink, whatsappTarget, queue, handle };
+export { parseShrink, whatsappTarget, queue, handle, redactDiagnostic, writeLaunchDiagnostic };
