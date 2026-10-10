@@ -23,6 +23,7 @@ import ast
 import functools
 import hashlib
 import html
+import importlib.util
 import json
 import mimetypes
 import os
@@ -30,6 +31,7 @@ import re
 import shutil
 import smtplib
 import subprocess
+import sys
 import textwrap
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
@@ -41,6 +43,10 @@ from urllib.parse import parse_qs, urljoin, urlparse
 
 import requests
 from bs4 import BeautifulSoup
+
+_provider_spec = importlib.util.spec_from_file_location("openclaw_sum_provider", Path(__file__).with_name("sum_provider.py"))
+provider = importlib.util.module_from_spec(_provider_spec)
+_provider_spec.loader.exec_module(provider)
 
 
 USER_AGENT = (
@@ -773,6 +779,10 @@ def diarize_transcript_with_gemini(state: RunState) -> None:
         state.warnings.append("Speaker diarization post-pass skipped: transcript exceeded model input budget")
         return
 
+    spoken = " ".join(SPEAKER_LABEL_RE.sub("", line.strip(), count=1) for line in labeled.splitlines() if line.strip())
+    if spoken.split() != transcript.split():
+        state.warnings.append("Speaker-tagging post-pass changed spoken words; keeping original transcript")
+        return
     state.transcript_text = labeled
     # Harvest unique speaker names for metadata so the summary + email can
     # display them.
@@ -1415,10 +1425,24 @@ def parse_rss_feed(feed_url: str, url_hint: str | None, title_hint: str | None) 
     return meta
 
 
+def yt_dlp_command() -> list[str] | None:
+    """Allow a tested, isolated downloader without changing global packages."""
+    configured = os.getenv("SHRINK_YTDLP_MODULE_DIR", "").strip()
+    if configured:
+        root = Path(configured).expanduser().resolve()
+        if not (root / "yt_dlp/__init__.py").is_file():
+            return None  # An explicit broken configuration is not a fallback.
+        return [sys.executable, "-I", "-c",
+                "import sys; sys.path.insert(0,sys.argv.pop(1)); from yt_dlp import main; main()",
+                str(root), "--force-ipv4"]
+    return ["yt-dlp"] if command_exists("yt-dlp") else None
+
+
 def yt_dlp_probe(url: str) -> dict | None:
-    if not command_exists("yt-dlp"):
+    executable = yt_dlp_command()
+    if not executable:
         return None
-    proc = sh(["yt-dlp", "--dump-single-json", "--no-warnings", "--skip-download", url])
+    proc = sh(executable + ["--dump-single-json", "--no-warnings", "--skip-download", url])
     if proc.returncode != 0 or not proc.stdout.strip():
         return None
     try:
@@ -1456,12 +1480,12 @@ def build_youtube_subtitle_langs(metadata: dict) -> str:
 
 
 def yt_dlp_download_subtitles(url: str, workdir: Path, metadata: dict | None = None) -> str | None:
-    if not command_exists("yt-dlp"):
+    executable = yt_dlp_command()
+    if not executable:
         return None
     prefix = workdir / "subtitles"
     metadata = metadata or {}
-    proc = sh([
-        "yt-dlp",
+    proc = sh(executable + [
         "--skip-download",
         "--write-subs",
         "--write-auto-subs",
@@ -1484,11 +1508,11 @@ def yt_dlp_download_subtitles(url: str, workdir: Path, metadata: dict | None = N
 
 
 def yt_dlp_download_audio(url: str, workdir: Path) -> Path | None:
-    if not command_exists("yt-dlp"):
+    executable = yt_dlp_command()
+    if not executable:
         return None
     prefix = workdir / "audio"
-    proc = sh([
-        "yt-dlp",
+    proc = sh(executable + [
         "--no-playlist",
         "-f",
         "bestaudio[ext=m4a]/bestaudio/best",
@@ -1581,19 +1605,18 @@ def upload_file_to_gemini(path: Path, api_key: str) -> tuple[str, str]:
         "X-Goog-Upload-Header-Content-Type": mime_type,
         "Content-Type": "application/json",
     }
-    start = requests.post(
-        f"https://generativelanguage.googleapis.com/upload/v1beta/files?key={api_key}",
-        headers=headers,
+    start = provider.current().post(
+        "gemini", "https://generativelanguage.googleapis.com/upload/v1beta/files", "file-upload",
+        headers={**headers, "x-goog-api-key": api_key},
         json={"file": {"display_name": path.name}},
         timeout=TIMEOUT,
     )
-    start.raise_for_status()
     upload_url = start.headers.get("X-Goog-Upload-URL")
     if not upload_url:
         raise RuntimeError("Gemini upload URL missing")
     with path.open("rb") as fh:
-        finish = requests.post(
-            upload_url,
+        finish = provider.current().post(
+            "gemini", upload_url, "file-upload",
             headers={
                 "Content-Length": str(path.stat().st_size),
                 "X-Goog-Upload-Offset": "0",
@@ -1602,28 +1625,13 @@ def upload_file_to_gemini(path: Path, api_key: str) -> tuple[str, str]:
             data=fh,
             timeout=120,
         )
-    finish.raise_for_status()
     payload = finish.json()["file"]
     return payload["uri"], payload.get("mimeType") or mime_type
 
 
 def gemini_generate(parts: list[dict], *, api_key: str, temperature: float = 0.1) -> str:
-    payload = {
-        "contents": [{"parts": parts}],
-        "generationConfig": {"temperature": temperature},
-    }
-    resp = requests.post(
-        f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent?key={api_key}",
-        json=payload,
-        timeout=180,
-    )
-    resp.raise_for_status()
-    data = resp.json()
-    out = []
-    for part in data["candidates"][0]["content"]["parts"]:
-        if "text" in part:
-            out.append(part["text"])
-    return "\n".join(out).strip()
+    # Compatibility entry point for existing summarization/speaker prompts.
+    return provider.current().text(parts, api_key, GEMINI_MODEL, temperature)
 
 
 def transcribe_with_gemini(audio_path: Path, state: RunState, api_key: str) -> str:
@@ -1653,20 +1661,19 @@ def transcribe_with_gemini(audio_path: Path, state: RunState, api_key: str) -> s
 
 def transcribe_with_openai(audio_path: Path, api_key: str) -> str:
     with audio_path.open("rb") as fh:
-        resp = requests.post(
-            "https://api.openai.com/v1/audio/transcriptions",
+        resp = provider.current().post(
+            "openai", "https://api.openai.com/v1/audio/transcriptions", "gpt-4o-mini-transcribe",
             headers={"Authorization": f"Bearer {api_key}"},
             data={"model": "gpt-4o-mini-transcribe"},
             files={"file": (audio_path.name, fh, choose_mime_type(audio_path))},
             timeout=180,
         )
-    resp.raise_for_status()
     data = resp.json()
     if isinstance(data, dict) and data.get("text"):
         return data["text"].strip()
     if isinstance(data, str):
         return data.strip()
-    raise RuntimeError("Unexpected OpenAI transcription response")
+    raise provider.ProviderError("Unexpected OpenAI transcription response")
 
 
 def transcribe_chunk(
@@ -1679,17 +1686,21 @@ def transcribe_chunk(
 ) -> str:
     ext = audio_path.suffix.lower()
     providers = ["openai", "gemini"] if prefer_openai else ["gemini", "openai"]
-    for provider in providers:
-        if provider == "gemini" and gemini_key and ext in GEMINI_SAFE_EXTENSIONS:
+    for choice in providers:
+        if choice == "gemini" and gemini_key and ext in GEMINI_SAFE_EXTENSIONS:
             try:
                 return transcribe_with_gemini(audio_path, state, gemini_key)
             except Exception as exc:
                 state.warnings.append(f"Gemini chunk transcription failed for {audio_path.name}: {exc}")
-        if provider == "openai" and openai_key and ext in OPENAI_SAFE_EXTENSIONS:
+                if isinstance(exc, provider.ProviderError) and not isinstance(exc, provider.PrimaryUnavailable):
+                    raise
+        if choice == "openai" and openai_key and ext in OPENAI_SAFE_EXTENSIONS:
             try:
                 return transcribe_with_openai(audio_path, openai_key)
             except Exception as exc:
                 state.warnings.append(f"OpenAI chunk transcription failed for {audio_path.name}: {exc}")
+                if isinstance(exc, provider.ProviderError):
+                    raise
     raise RuntimeError(f"No compatible transcription provider for {audio_path.name}")
 
 
@@ -1790,6 +1801,7 @@ def summarize_text_for_email(
         - No numbering, no section headers, and no labels like "Conclusion:".
         - If something is uncertain, speculative, or contested, say that explicitly.
         - who should identify the host/guest/speaker(s) if known, else "Unknown".
+        - A name mentioned or quoted in ASR is not verified speaker identity. Without explicit speaker labels or identifying author/speaker metadata, use "Unknown" for who and "the speaker" in the summary/title. Do not turn uncertain ASR spellings into a named attribution.
         - transcript_possible must be true only if there is a full transcript.
 
         Bad:
@@ -2270,7 +2282,14 @@ def transcribe_audio(state: RunState) -> bool:
             return True
         except Exception as exc:
             state.warnings.append(f"Gemini transcription failed: {exc}")
+            if isinstance(exc, provider.ProviderError) and not isinstance(exc, provider.PrimaryUnavailable):
+                raise
 
+    if openai_key and ext not in OPENAI_SAFE_EXTENSIONS and command_exists("ffmpeg"):
+        transcoded = ffmpeg_transcode_to_mp3(candidate, state.workdir / "audio.openai.mp3")
+        if transcoded:
+            candidate, ext = transcoded, ".mp3"
+            state.notes.append("Transcoded original audio to MP3 for OpenAI transcription compatibility")
     if openai_key and ext in OPENAI_SAFE_EXTENSIONS:
         try:
             state.transcript_text = transcribe_with_openai(candidate, openai_key)
@@ -2278,6 +2297,8 @@ def transcribe_audio(state: RunState) -> bool:
             return True
         except Exception as exc:
             state.warnings.append(f"OpenAI transcription failed: {exc}")
+            if isinstance(exc, provider.ProviderError):
+                raise
 
     return False
 
@@ -2312,7 +2333,8 @@ def summarize(state: RunState) -> dict:
             "who": state.metadata.get("author") or "Unknown",
             "transcript_possible": False,
         }
-    if not gemini_key:
+    if not gemini_key and not (read_env_key("OPENAI_API_KEY") and
+            (provider.current().enabled or provider.current().initial == "openai")):
         title = state.metadata.get("title") or "Untitled"
         return {
             "email_subject": f"[Transcript] {title}",
@@ -2356,7 +2378,16 @@ def ensure_runtime_dirs(seed_url: str) -> Path:
 
 
 def run_pipeline(url: str, *, email_to: str | None, skip_email: bool) -> dict:
-    state = RunState(original_url=url, workdir=ensure_runtime_dirs(url))
+    workdir = ensure_runtime_dirs(url)
+    with provider.scope(workdir) as routing:
+        result = _run_pipeline(url, email_to=email_to, skip_email=skip_email, workdir=workdir)
+        result["provider_fallback"] = routing.switch_reason
+        result["provider_evidence"] = str(routing.directory) if routing.directory and routing.directory.exists() else None
+        return result
+
+
+def _run_pipeline(url: str, *, email_to: str | None, skip_email: bool, workdir: Path) -> dict:
+    state = RunState(original_url=url, workdir=workdir)
 
     resolve_url(state)
 
@@ -2460,7 +2491,8 @@ def main() -> int:
     args = parser.parse_args()
 
     if args.command == "run":
-        result = run_pipeline(args.url, email_to=args.email_to, skip_email=args.skip_email)
+        email_to = args.email_to or os.environ.get("SUM_EMAIL_TO") or os.environ.get("TRANSCRIBE_EMAIL_TO")
+        result = run_pipeline(args.url, email_to=email_to, skip_email=args.skip_email)
         if args.json:
             print(json.dumps(result, ensure_ascii=False, indent=2))
         else:

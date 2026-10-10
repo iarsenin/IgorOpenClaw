@@ -11,7 +11,7 @@ original download, PCM, ASR, proposed cuts, reports and usage remain private.
 
 ## Editing and review
 
-1. One Pro request reads the complete navigation and proposes explained word-ID
+1. One editorial request reads the complete navigation and proposes explained word-ID
    cuts, optional wordless hesitation cuts, and a protected-material ledger.
 2. Local validation rejects unknown/duplicate IDs, overlap with protected words,
    overlapping retained speech, unsafe neighboring-word margins, cross-block
@@ -41,6 +41,8 @@ original download, PCM, ASR, proposed cuts, reports and usage remain private.
    blocks resending, rather than guessing whether a message was delivered.
 
 The complete editorial contract is [shrink-original.md](../config/shrink-original.md).
+The independent text gate has its own [stage-specific contract](../config/shrink-text-review.md),
+so it does not pretend to perform the separate physical-audio review.
 It protects the speaker's claim, not its independent factual truth. This is an
 abridgment, not fact checking. It retains meaningful pauses and uncertain
 passages; it does not globally delete filler tokens or low-amplitude sound.
@@ -59,10 +61,18 @@ remains paused.
 Each exact provider stage is persisted as started before its work. Raw model
 responses are saved before parsing. A matching completed stage can be reused
 only when its result hash, recording, code, contract and models agree. Started,
-failed, interrupted, malformed or changed stages stay held. There is no provider
-fallback, schema-repair retry, blind regeneration or hourly retry scheduler.
-HTTP 429 latches further provider requests immediately; only upload cleanup is
-allowed. Structured provider wait advice is recorded as supplied, never invented.
+failed, interrupted, malformed or changed stages stay held. There is no
+schema-repair retry, blind regeneration or hourly retry scheduler.
+With `OPENAI_API_KEY` present, an actual Gemini availability/access HTTP failure
+(401, 403, 404, 408, 429, 500, 502, 503 or 504) permits one switch to OpenAI. The
+switch is saved for all remaining stages: Gemini is not tried again in that job.
+Other errors, ambiguous transport failures, invalid schemas, truncated reports,
+fidelity issues and listening uncertainty do **not** trigger fallback. Each exact
+OpenAI request also has a started/received/failed receipt and never replays.
+An OpenAI 429 stops all further requests in the job. Gemini 429 stops all Gemini
+requests except upload cleanup; the explicitly enabled OpenAI route may continue.
+Both primary failures and fallback attempts are retained, including unknown usage.
+Structured provider wait advice is recorded as supplied, never invented.
 The worker returns a failure notice and does not publish rejected audio.
 
 To retry after a diagnosed failure, explicitly create a new job/directory. Do not
@@ -82,7 +92,13 @@ There are no global dependency upgrades in this deployment.
 | `SHRINK_EDIT_MODEL` | `gemini-3.1-pro-preview` |
 | `SHRINK_TRANSCRIBE_MODEL` | `gemini-3.5-transcribe` |
 | `SHRINK_AUDIO_REVIEW_MODEL` | `gemini-3.8-flash` |
-| `SHRINK_FIDELITY_REVIEW_MODEL` | `gemini-3.5-flash` |
+| `SHRINK_FIDELITY_REVIEW_MODEL` | `gemini-3.6-flash` |
+| `OPENAI_API_KEY` | Existing OpenAI credential, reused without copying into reports |
+| `SHRINK_OPENAI_FALLBACK` | `1`; set `0` to disable the availability-only switch |
+| `SHRINK_PROVIDER` | `gemini`; `openai` explicitly selects OpenAI for a new job |
+| `SHRINK_OPENAI_TEXT_MODEL` | `gpt-6-luna`, separate editor and critic requests, reasoning `none` |
+| `SHRINK_OPENAI_AUDIO_MODEL` | `gpt-audio-1.5`, actual audio input, text-only report |
+| `SHRINK_OPENAI_LANGUAGE` | `en`; ISO language code, or `auto` to omit the Whisper language hint |
 | `SHRINK_ORIGINAL_TEMPO` | `1.08`, queue worker; allowed range 1.0–1.15 |
 | `SHRINK_ORIGINAL_STATE_DIR` | Optional isolated queue override |
 | `SHRINK_MAX_JOBS` | `2`, queued/running job ceiling |
@@ -95,6 +111,41 @@ than truncating the source or delivering a partial episode. No universal 50%
 compression or cost-per-hour promise is made. Provider usage is recorded in
 each job's `usage.jsonl`; missing usage is unknown, not free. Local compute and
 actual invoiced charges are not measured.
+
+### Why these OpenAI models
+
+[`gpt-6-luna`](https://developers.openai.com/api/docs/models/gpt-6-luna) is the
+efficient focused-task text model. The editor and critic remain separate calls;
+both return a forced report tool call that is validated locally. Audio-only API
+fields are not sent to this text model. Text-only reports cannot certify sound.
+
+[`gpt-audio-1.5`](https://developers.openai.com/api/docs/models/gpt-audio-1.5)
+is the current audio model. Reviews receive the unchanged physical WAV and
+request only text; no speech is generated. The cheaper audio-mini snapshot was
+tested and rejected for this job: its actual reports had invalid coverage IDs
+and unreliable boundary descriptions. It is not silently retried with a stronger
+model in production. This selection followed inspection of those saved failures.
+A configuration error never silently changes the model or loosens the rules.
+
+OpenAI ASR uses `whisper-1`, because the needed [word-timestamp capability](https://developers.openai.com/api/docs/guides/speech-to-text#timestamps)
+is not supplied by the cheaper ordinary transcription models. Whisper does not
+provide speaker diarization: its speaker labels stay unknown, not a guessed
+primary speaker. Every physical voice remains in the source waveform, and
+actual-audio gates must check affected voices and overlaps. Returned words must
+cover the exact ASR text; no guessed words, translation or timestamp repair is
+inserted. English is explicit by default after a short English test was
+incorrectly autodetected as Welsh. Other languages require the corresponding
+configuration, or deliberate `auto` selection.
+
+Current [published pricing](https://developers.openai.com/api/docs/pricing) is
+$0.10/M input and $0.50/M output tokens for this text model, $32/M audio-input
+tokens for audio-1.5, and $0.006/input minute for Whisper. These are list rates,
+not a total cost estimate or invoice. Failed primary/fallback calls, cached-token
+details, unknown usage, local compute and hosting must not be discarded.
+`/sum` now has its own OpenAI text fallback for summary and speaker-text stages,
+in addition to its existing OpenAI transcription path. An eligible Gemini failure
+latches Google off for that run; subsequent text requests use GPT rather than
+retrying the same cap. This does not relax `/shrink`'s fidelity/listening gates.
 
 Install/restart the worker on the existing configured Mac without running the
 broad setup script or resetting gateway credentials, sessions or workspace:
@@ -122,7 +173,7 @@ python3 scripts/shrink_original.py run 'https://example.com/episode.mp3' \
 ```
 
 `--local-audio /absolute/recording.wav` supplies an offline input recording but
-does not disable Gemini editing/listening. `--target` explicitly enables sending.
+does not disable provider editing/listening. `--target` explicitly enables sending.
 The tests below use mock provider reports and actual local FFmpeg, with no paid
 API, SMTP email or WhatsApp messages:
 
@@ -147,3 +198,5 @@ The old `scripts/shrink_audio.py`, speaker/cast helpers and trial outputs may
 remain in the working tree as historical research. They are not the command or
 LaunchAgent entry point. Old synthetic documentation is historical, not the
 current deployment contract. See [deployment validation](shrink-original-deployment.md).
+The later OpenAI fallback and short-fixture results are documented in
+[OpenAI fallback validation](shrink-openai-validation.md).

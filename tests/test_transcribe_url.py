@@ -1,5 +1,6 @@
 import importlib.util
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -36,6 +37,28 @@ class FakeResponse:
 
 
 class TranscribeUrlTests(unittest.TestCase):
+    def test_isolated_downloader_is_selected_without_global_package_changes(self):
+        module = load_module()
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp); (root/"yt_dlp").mkdir(); (root/"yt_dlp/__init__.py").touch()
+            with mock.patch.dict(module.os.environ,{"SHRINK_YTDLP_MODULE_DIR":temp}), \
+                 mock.patch.object(module,"command_exists",side_effect=AssertionError("No global lookup")):
+                args = module.yt_dlp_command()
+                self.assertEqual(args[0],sys.executable)
+                self.assertEqual(args[-2:],[str(root.resolve()),"--force-ipv4"])
+
+    def test_missing_explicit_downloader_does_not_silently_use_old_global_version(self):
+        module = load_module()
+        with mock.patch.dict(module.os.environ,{"SHRINK_YTDLP_MODULE_DIR":"/does/not/exist"}), \
+             mock.patch.object(module,"command_exists",return_value=True):
+            self.assertIsNone(module.yt_dlp_command())
+
+    def test_default_downloader_keeps_existing_behavior(self):
+        module = load_module()
+        with mock.patch.dict(module.os.environ,{"SHRINK_YTDLP_MODULE_DIR":""}), \
+             mock.patch.object(module,"command_exists",return_value=True):
+            self.assertEqual(module.yt_dlp_command(),["yt-dlp"])
+
     def test_email_summary_prompt_demands_dense_non_teaser_bullets(self):
         module = load_module()
         captured = {}

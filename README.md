@@ -1,5 +1,7 @@
 # IgorOpenClaw
 
+> **Provider update — October 10, 2026:** Both `/sum` and original-voice `/shrink` support Gemini-to-OpenAI fallback. `/sum` includes GPT summaries, not just transcription. The Gemini fidelity critic is explicitly `gemini-3.6-flash`; private evidence and strict `/shrink` listening holds remain intact. See [provider validation](docs/shrink-openai-validation.md). Do not run the historical broad setup/reset instructions to deploy this update.
+
 > **Current audio workflow — October 9, 2026:** `/shrink` edits the original recording and preserves its voices; `/sum` remains the transcript/summary/email command. See [the current guide](docs/shrink-original.md) and [deployment validation](docs/shrink-original-deployment.md). Earlier synthetic-voice and broad setup instructions describe historical work; do not use them to reset the current deployment.
 
 > **STATUS: ACTIVE (restored 2026-04-18, lean-cron mode as of 2026-05-14).** Gateway, LaunchAgents, and the local `/transcribe` plugin are running. Only 3 cron jobs are currently enabled (`post-restart-resume`, `api-spend-check`, `morning-briefing`); the rest are defined but disabled in `config/cron/jobs.json` to save tokens.
