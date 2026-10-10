@@ -59,6 +59,15 @@ the delivered short test, three OpenAI requests for the non-delivered comparison
 run, and two separate one-shot OpenAI boundary tests. Existing ASR was reused;
 there was no new transcription, full-episode provider run or full-episode resend.
 
+The held candidate was pushed as `ecd74ca`. At 21:06 UTC on October 10, the
+gateway restarted from PID 76666 to 78819 using the existing LaunchAgent.
+RPC/configuration checks passed and WhatsApp was linked, running and connected
+with no reported error. The private stderr log did not grow. Gateway plist,
+credentials, channel configuration and maintenance-marker hashes were unchanged.
+The general worker remained unloaded. A post-restart invocation of the actual
+command handler returned maintenance without creating a job; it did not intercept
+`/sum`. This deployment did not relax the failed release decision above.
+
 ## What is actually verified
 
 The user's 107.21-minute episode has now produced a reviewed 99.25-minute edition
