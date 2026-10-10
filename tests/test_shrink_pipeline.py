@@ -25,6 +25,32 @@ PASS={'pass':True,'issues':[],'uncertainties':[],'checked_ids':[],'protected_ids
 
 
 class PipelineTests(unittest.TestCase):
+    def test_failed_boundary_verification_is_preserved_and_never_replayed(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root=pathlib.Path(temp);source=root/'source.wav';audio(source)
+            failed={**PASS,'pass':False,'issues':['The output ends abruptly, omitting the remainder of the sentence.']}
+            client=mock.Mock();client.verify_boundary_claim.return_value=failed
+            context={'source_eof':True,'output_eof':True,'uncut_source_tail':True}
+            for _ in range(2):
+                with self.assertRaises(p.b.ShrinkError):p.review_decision(root,client,failed,source,source,context)
+            client.verify_boundary_claim.assert_called_once()
+            self.assertEqual(p.b.read(root/'stages/boundary-claim-verification/result.json'),failed)
+            self.assertEqual(failed['pass'],False)
+
+    def test_budget_counts_failures_and_blocks_before_next_request(self):
+        with tempfile.TemporaryDirectory() as temp, mock.patch.object(p.b,'load_env'), \
+             mock.patch.dict(p.b.os.environ,{'SHRINK_PROVIDER':'openai','OPENAI_API_KEY':'fake-unit'},clear=True):
+            client=p.EditClient(pathlib.Path(temp));client.request_limit=1
+            client.reserve_request('openai','test')
+            with self.assertRaises(p.b.ShrinkError):client.reserve_request('openai','test')
+            self.assertEqual(p.b.read(client.budget_path)['requests_started'],1)
+
+    def test_boundary_context_is_derived_from_final_physical_frames_and_cut_history(self):
+        safe=p.boundary_context(100*p.b.RATE,95*p.b.RATE,100*p.b.RATE,95*p.b.RATE,[])
+        self.assertTrue(all(safe.values()))
+        self.assertFalse(p.boundary_context(100*p.b.RATE,95*p.b.RATE,99*p.b.RATE,95*p.b.RATE,[])['source_eof'])
+        self.assertFalse(p.boundary_context(100*p.b.RATE,95*p.b.RATE,100*p.b.RATE,95*p.b.RATE,[{'end':99}])['uncut_source_tail'])
+
     def test_semantic_view_preserves_exact_word_id_speaker_and_segment(self):
         value=p.semantic_navigation(words());back=[]
         for group in value['groups']:

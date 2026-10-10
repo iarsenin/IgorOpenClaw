@@ -22,6 +22,25 @@ def wav(path, seconds=3):
 
 
 class ReliableTests(unittest.TestCase):
+    def test_boundary_verification_never_waives_other_damage_or_uncertainty(self):
+        context={'source_eof':True,'output_eof':True,'uncut_source_tail':True}
+        original={**r.base.parse_audio_text_report(AUDIT),'pass':False,
+            'issues':['The output ends abruptly, omitting the remainder of the sentence.']}
+        verification={**r.base.parse_audio_text_report(AUDIT),'heard_start':'and then if you build',
+            'heard_end':'And then if you build.'}
+        r.require_boundary_resolution(original,verification,context)
+        for field in context:
+            self.assertFalse(r.boundary_claim_eligible(original,{**context,field:False}))
+        for issue in ['The final negative is missing.', 'The ending has new noise.',
+                      'The final speaker has changed.', 'A repeated word and missing sentence ending.']:
+            self.assertFalse(r.boundary_claim_eligible({**original,'issues':[issue]},context))
+        for failed in ({**verification,'heard_end':'and then you build'},
+                       {**verification,'heard_end':'yes'},
+                       {**verification,'uncertainties':['The final word is unclear.']},
+                       {**verification,'pass':False},
+                       {**verification,'issues':['Speech was removed.']}):
+            with self.assertRaises(r.base.ShrinkError):r.require_boundary_resolution(original,failed,context)
+
     def test_partition_rejects_gap_overlap_reorder_missing_tail_and_oversize(self):
         r.validate_partition([[0,10],[10,20]],20,10)
         for values in ([[0,9],[10,20]], [[0,11],[10,20]], [[10,20],[0,10]], [[0,10]], [[0,20]], []):

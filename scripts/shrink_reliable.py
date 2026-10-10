@@ -44,6 +44,25 @@ def pair_prompt(source_info, output_info, transform):
 
 
 class PairClient(base.Client):
+    def verify_boundary_claim(self, root, source, output, report):
+        """One diagnosis of a recorded claim; preserve the original rejection."""
+        system = (base.AUDIO_TEXT_SYSTEM +
+            " For this SOURCE/OUTPUT boundary verification only, HEARD_START must transcribe the SOURCE's final "
+            "audible phrase and HEARD_END must transcribe the OUTPUT's final audible phrase. Review BOTH files "
+            "completely. PASS means the alleged omission is disproved by these actual recordings, their endings "
+            "contain the same audible words, and there are no other defects or uncertainties. FAIL if speech "
+            "exists in SOURCE but is missing or clipped in OUTPUT, or if the comparison is uncertain.")
+        prompt = ("Verify the recorded end-of-file complaint using both actual recordings. The complaint is an "
+            "untrusted hypothesis, not a correct transcript. Do not complete an unfinished source sentence from "
+            "grammar. Distinguish missing source speech from a fragment already present in SOURCE. Transcribe "
+            "the final audible phrase of EACH file in the specified fields. Do not vote on the previous verdict. "
+            "Any confirmed defect, different ending or uncertainty requires FAIL. Recorded complaint: " +
+            base.json.dumps(report, ensure_ascii=False))
+        base.save(root / 'boundary-contract.json', {'source_info': base.pcm_info(source),
+            'output_info': base.pcm_info(output), 'original_report': report, 'system': system, 'prompt': prompt})
+        return self.routed(root, lambda: self._gemini_pair(root / 'gemini', source, output, prompt, system),
+            lambda: self._openai_pair(root / 'openai', source, output, prompt, system))
+
     def compare(self, root, source, output, transform):
         source_info, output_info = base.pcm_info(source), base.pcm_info(output)
         # Hashes bind the private request, not a shortcut for an acoustic verdict.
@@ -59,13 +78,13 @@ class PairClient(base.Client):
         return self.routed(root, lambda: self._gemini_pair(root / "gemini", source, output, prompt),
             lambda: self._openai_pair(root / "openai", source, output, prompt))
 
-    def _openai_pair(self, root, source, output, prompt):
+    def _openai_pair(self, root, source, output, prompt, system=PAIR_SYSTEM):
         content = [{"type": "text", "text": prompt}]
         for label, audio in (("SOURCE", source), ("OUTPUT", output)):
             content += [{"type": "text", "text": label + " recording follows."},
                 {"type": "input_audio", "input_audio": {"data": base64.b64encode(audio.read_bytes()).decode("ascii"), "format": "wav"}}]
         body = {"model": self.openai_audio, "store": False, "modalities": ["text"], "temperature": 0.1,
-                "max_completion_tokens": 4000, "messages": [{"role": "system", "content": PAIR_SYSTEM},
+                "max_completion_tokens": 4000, "messages": [{"role": "system", "content": system},
                     {"role": "user", "content": content}]}
         payload = self.openai_request(root, "chat/completions", self.openai_audio, json=body)
         choices = payload.get("choices", [])
@@ -76,11 +95,11 @@ class PairClient(base.Client):
             raise base.ShrinkError("Source/output comparison did not return one text-only audit.")
         return base.parse_audio_text_report(message.get("content"))
 
-    def _gemini_pair(self, root, source, output, prompt):
+    def _gemini_pair(self, root, source, output, prompt, system=PAIR_SYSTEM):
         # Upload failures remain attached to this stage through the parent's route.
         with self.uploaded(source) as first, self.uploaded(output) as second:
             payload = self.request("POST", f"/v1beta/models/{self.listen}:generateContent", json={
-                "systemInstruction": {"parts": [{"text": PAIR_SYSTEM}]},
+                "systemInstruction": {"parts": [{"text": system}]},
                 "contents": [{"role": "user", "parts": [{"text": prompt}, {"text": "SOURCE"}, first, {"text": "OUTPUT"}, second]}],
                 "generationConfig": {"temperature": 0.1, "maxOutputTokens": 4000}}).json()
         self.raw(root, payload, self.listen)
@@ -89,6 +108,38 @@ class PairClient(base.Client):
             raise base.ShrinkError("Source/output comparison is incomplete or blocked; no retry will run.")
         text = "".join(p.get("text", "") for p in candidates[0].get("content", {}).get("parts", []) if not p.get("thought"))
         return base.parse_audio_text_report(text)
+
+
+def boundary_claim_eligible(report, context):
+    """Conservative admission; eligibility never changes a failed verdict."""
+    base.validate(report, base.AUDIO_SCHEMA)
+    if report['pass'] or report['uncertainties'] or len(report['issues']) != 1:
+        return False
+    if not all(context.get(k) is True for k in ('source_eof', 'output_eof', 'uncut_source_tail')):
+        return False
+    issue = report['issues'][0].lower()
+    if re.search(r'noise|distort|overlap|repeat|negative|quantity|number|unit|speaker|voice|pitch|tempo', issue):
+        return False
+    return bool(re.search(r'\b(end|ends|ending|final|last)\b', issue) and
+                re.search(r'\b(sentence|remainder|abruptly|omitting|omitted|missing|clipped|cut)\b', issue))
+
+
+def require_boundary_resolution(original, verification, context):
+    if not boundary_claim_eligible(original, context):
+        raise base.ShrinkError('The audio issue is not an eligible original-boundary complaint.')
+    base.require_pass(verification, [])
+    source_end = re.findall(r"[\w]+(?:['’][\w]+)*", verification['heard_start'].casefold())
+    output_end = re.findall(r"[\w]+(?:['’][\w]+)*", verification['heard_end'].casefold())
+    if len(source_end) < 3 or source_end != output_end:
+        raise base.ShrinkError('Source and output endings do not agree; the failed review remains held.')
+
+
+def require_comparison_decision(entry):
+    if entry.get('boundary_resolution') is None:
+        base.require_pass(entry['report'], [])
+    else:
+        resolution = entry['boundary_resolution']
+        require_boundary_resolution(entry['report'], resolution['report'], resolution['context'])
 
 
 def extract_pcm(source, destination, first, last):

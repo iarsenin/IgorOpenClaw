@@ -3,8 +3,10 @@
 Current status (October 10, 2026): automatic `/shrink` processing is paused for
 reliability repairs. It returns a maintenance message without creating or
 charging a job. `/sum <URL>` remains available. One separately reviewed episode
-has been delivered, but the replacement pipeline is not enabled as the queue
-worker. See the [repair and validation record](shrink-reliability-repair.md).
+has been delivered. The replacement pipeline is wired into the queue in code,
+but its worker remains unloaded and production enqueue is blocked. A short
+command-to-WhatsApp test passed; the original-fragment review failure still
+blocks general release. See the [repair and validation record](shrink-reliability-repair.md).
 
 The workflow below describes the original-voice editing design, not a claim
 that the general command has completed release acceptance. It makes a
@@ -112,7 +114,9 @@ There are no global dependency upgrades in this deployment.
 | `OPENAI_API_KEY` | Existing OpenAI credential, reused without copying into reports |
 | `SHRINK_OPENAI_FALLBACK` | `1`; set `0` to disable the availability-only switch |
 | `SHRINK_PROVIDER` | `gemini`; `openai` explicitly selects OpenAI for a new job |
-| `SHRINK_OPENAI_TEXT_MODEL` | `gpt-6-luna`, separate editor and critic requests, reasoning `none` |
+| `SHRINK_OPENAI_TEXT_MODEL` | `gpt-6-luna`, editorial proposals, reasoning `none` |
+| `SHRINK_OPENAI_CRITIC_MODEL` | `gpt-6-sol`, separate complete source/retained-text review |
+| `SHRINK_OPENAI_CRITIC_EFFORT` | `low`, independent text review through Responses |
 | `SHRINK_OPENAI_AUDIO_MODEL` | `gpt-audio-1.5`, actual audio input, text-only report |
 | `SHRINK_OPENAI_LANGUAGE` | `en`; ISO language code, or `auto` to omit the Whisper language hint |
 | `SHRINK_ORIGINAL_TEMPO` | `1.08`, queue worker; allowed range 1.0–1.15 |
@@ -121,7 +125,10 @@ There are no global dependency upgrades in this deployment.
 | `SHRINK_WORKER_MODE` | `launchd` in the installed service |
 
 Legacy `SHRINK_RATIO`, TTS model, stock voice and synthesis-concurrency settings
-do not affect this worker. Input duration is bounded to ten seconds–six hours.
+do not affect this worker. The v3 queue candidate accepts ten seconds–two hours.
+It caps request starts at 80 per job and stops starting them after two hours;
+these are workload limits, not a guaranteed dollar ceiling. An in-flight request
+can finish after the wall-time limit. Failed attempts remain counted.
 Long recordings can exceed model context/output or quota; they fail held rather
 than truncating the source or delivering a partial episode. No universal 50%
 compression or cost-per-hour promise is made. Provider usage is recorded in
@@ -131,9 +138,10 @@ actual invoiced charges are not measured.
 ### Why these OpenAI models
 
 [`gpt-6-luna`](https://developers.openai.com/api/docs/models/gpt-6-luna) is the
-efficient focused-task text model. The editor and critic remain separate calls;
-both return a forced report tool call that is validated locally. Audio-only API
-fields are not sent to this text model. Text-only reports cannot certify sound.
+efficient focused-task text model used for proposals. The independent critic is
+`gpt-6-sol` through Responses with low reasoning and a strict report schema.
+Audio-only API fields are not sent to either text model. Text-only reports cannot
+certify sound.
 
 [`gpt-audio-1.5`](https://developers.openai.com/api/docs/models/gpt-audio-1.5)
 is the current audio model. Reviews receive the unchanged physical WAV and
@@ -166,13 +174,16 @@ Finite in-range word intervals may overlap. Their reported values and exact text
 order are retained, not sorted or retimed. Cut envelopes cover all selected
 intervals and continue to reject overlap with retained speech and unsafe margins.
 
-Long-episode planning and complete text comparisons use lossless column encoding
-instead of repeating JSON keys per word. The final sound review is independently
-audio-only: it receives the actual outgoing encode decoded to WAV, its part
-interval and listening instructions, not expected words, speaker identities or
-an earlier verdict. Complete navigation, retained-word context and ID bindings
+Long-episode planning and complete text comparisons group exact words and IDs
+with their original local speaker/segment metadata. The final sound review is
+audio-only: it receives both the original source passage and the actual outgoing
+encode decoded to WAV, plus physical scope and declared-edit metadata. It receives
+no expected transcript, speaker identity or earlier verdict. Complete navigation, retained-word context and ID bindings
 remain saved for the separate text/history audit; they are not sent to the final
-listener. No source word, timestamp or acceptance rule is softened to fit.
+listener. A single separately scoped end-of-file complaint diagnosis may receive
+the original complaint as an untrusted hypothesis, alongside both complete
+recordings. It cannot suppress a failed or uncertain report. No source word,
+timestamp or acceptance rule is softened to fit.
 
 The OpenAI final listener returns ordinary text in six strictly framed sections
 (coverage, verdict, issues, uncertainties and the two audible boundary phrases).
@@ -216,12 +227,15 @@ responses, upload endpoints or credentials with code.
 Local run without WhatsApp delivery (provider calls are real unless mocked):
 
 ```bash
-python3 scripts/shrink_original.py run 'https://example.com/episode.mp3' \
+python3 scripts/shrink_pipeline.py 'https://example.com/episode.mp3' \
   --output output/shrink/original-example --tempo 1.08
 ```
 
 `--local-audio /absolute/recording.wav` supplies an offline input recording but
-does not disable provider editing/listening. `--target` explicitly enables sending.
+does not disable provider editing/listening. This diagnostic command has no
+delivery option. Normal delivery requires the current version-bound queue job,
+complete preflight and its explicit automatic-review acceptance receipt. Do not
+use the historical `shrink_original.py run` path to bypass release maintenance.
 The tests below use mock provider reports and actual local FFmpeg, with no paid
 API, SMTP email or WhatsApp messages:
 

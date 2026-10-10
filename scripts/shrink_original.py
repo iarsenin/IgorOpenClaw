@@ -25,6 +25,7 @@ import requests
 
 REPO = Path(__file__).resolve().parents[1]
 POLICY = "original-recording-v1"
+QUEUE_POLICY = "source-relative-cleanup-v3"
 RATE = 24000
 STEP = 600
 FADE = 0.012
@@ -914,6 +915,26 @@ def state_root():
     return Path(os.getenv("SHRINK_ORIGINAL_STATE_DIR", str(Path.home() / ".openclaw/state/shrink-original"))).expanduser()
 
 
+def release_fingerprint():
+    paths=['scripts/shrink_original.py','scripts/shrink_reliable.py','scripts/shrink_pipeline.py',
+           'scripts/shrink_delivery.py','scripts/shrink_publish.py','config/shrink-original.md','config/shrink-text-review.md']
+    return fingerprint({name:sha(REPO/name) for name in paths})
+
+
+def run_reviewed_job(args):
+    """The queue's only route: complete source-relative checks before any send."""
+    spec=importlib.util.spec_from_file_location('shrink_current_publisher',Path(__file__).with_name('shrink_publish.py'))
+    publisher=importlib.util.module_from_spec(spec);spec.loader.exec_module(publisher)
+    try:
+        result=publisher.p.run_job(args)
+        publisher.authorize_automatic_delivery(Path(args.output),args.target)
+        publisher.deliver(Path(args.output),args.target)
+        return result
+    except publisher.b.ShrinkError as exc:
+        # Modules use isolated imports; translate only our deliberately safe errors.
+        raise ShrinkError(str(exc)) from None
+
+
 def enqueue(url, target):
     validate_url(url)
     if not re.fullmatch(r"\+\d{6,15}", target or ""):
@@ -935,7 +956,8 @@ def enqueue(url, target):
         identifier = time.strftime("%Y%m%d-%H%M%S") + "-" + uuid.uuid4().hex[:8]
         directory = root / identifier
         directory.mkdir(mode=0o700)
-        save(directory / "job.json", {"id": identifier, "url": url, "target": target, "policy": POLICY,
+        save(directory / "job.json", {"id": identifier, "url": url, "target": target, "policy": QUEUE_POLICY,
+                                     "code_fingerprint": release_fingerprint(),
                                      "status": "queued", "created_at": time.time()})
     if os.getenv("SHRINK_WORKER_MODE") != "launchd":
         with (directory / "worker.log").open("ab") as log:
@@ -967,6 +989,7 @@ def enqueue_check():
 
 def worker(path):
     path = Path(path)
+    if (state_root()/'maintenance.json').exists():return
     with (path.parent / "job.lock").open("a") as lock:
         try:
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
@@ -975,14 +998,16 @@ def worker(path):
         job = read(path)
         if job.get("status") not in ("queued", "running"):
             return
-        if job.get("policy") != POLICY:
-            raise ShrinkError("This worker cannot resume a legacy synthetic job.")
+        if job.get("policy") != QUEUE_POLICY:
+            raise ShrinkError("This worker cannot resume a legacy job; its evidence stays preserved.")
         job.update(status="running", started_at=time.time())
         save(path, job)
         try:
+            if job.get('code_fingerprint')!=release_fingerprint():
+                raise ShrinkError('The worker version changed after enqueue. Saved work is held; no request was replayed.')
             args = argparse.Namespace(url=job["url"], output=str(path.parent), local_audio=None,
                                       tempo=float(os.getenv("SHRINK_ORIGINAL_TEMPO", "1.08")), target=job["target"])
-            result = run_job(args)
+            result = run_reviewed_job(args)
             job.update(status="complete", duration_seconds=result["duration_seconds"])
         except Exception as exc:
             message = str(exc) if isinstance(exc, ShrinkError) else f"Internal {type(exc).__name__}; inspect saved evidence."
@@ -992,7 +1017,7 @@ def worker(path):
             if cli:
                 with contextlib.suppress(ShrinkError):
                     command([cli, "message", "send", "--channel", "whatsapp", "--target", job["target"],
-                             "--message", f"/shrink stopped: {message}\nJob {job['id']}. No rejected audio was published; automatic retries are disabled."], timeout=120)
+                             "--message", f"/shrink could not finish safely: {message}\nJob {job['id']}. Saved evidence is retained; no automatic retry or uncertain delivery resend will run."], timeout=120)
             return
         save(path, {**job, "finished_at": time.time()})
 
@@ -1012,7 +1037,10 @@ def worker_loop():
                 continue
             for path in sorted(root.glob("*/job.json")):
                 if read(path).get("status") in ("queued", "running"):
-                    worker(path)
+                    try:worker(path)
+                    except ShrinkError as exc:
+                        # One obsolete queued job must not kill the queue loop.
+                        save(path,{**read(path),'status':'held','error':str(exc),'finished_at':time.time()})
             time.sleep(3)
 
 

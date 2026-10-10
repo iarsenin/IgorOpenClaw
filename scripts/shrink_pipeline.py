@@ -14,6 +14,87 @@ import wave
 SPEC=importlib.util.spec_from_file_location('shrink_reliable',Path(__file__).with_name('shrink_reliable.py'))
 r=importlib.util.module_from_spec(SPEC);SPEC.loader.exec_module(r)
 b=r.base
+POLICY = 'source-relative-cleanup-v3'
+
+
+def stage_proof(stage):
+    """Bind the complete saved response, request receipt and stage result."""
+    stage = Path(stage).resolve()
+    return {'stage': str(stage), 'files': {str(p.relative_to(stage)): b.sha(p)
+        for p in sorted(stage.rglob('*.json'))}}
+
+
+def verify_stage(proof, report):
+    stage = Path(proof['stage'])
+    if not {'attempt.json','result.json'} <= proof['files'].keys() or any(
+        Path(name).is_absolute() or '..' in Path(name).parts or b.sha(stage/name) != digest
+        for name, digest in proof['files'].items()):
+        raise b.ShrinkError('Saved review evidence changed before delivery.')
+    attempt = b.read(stage/'attempt.json')
+    if attempt.get('status') != 'complete' or attempt.get('result_sha256') != b.sha(stage/'result.json') or b.read(stage/'result.json') != report:
+        raise b.ShrinkError('The complete review result and its receipt disagree.')
+
+
+def verify_raw_report(proof, report, audio=True):
+    """Reparse the actual successful provider response, not an aggregate pass flag."""
+    verify_stage(proof, report)
+    stage=Path(proof['stage']); matches=[]
+    for name in proof['files']:
+        if Path(name).name != 'raw.json':continue
+        raw_path=stage/name; payload=b.read(raw_path)
+        receipt=raw_path.parent/'request-attempt.json'
+        if receipt.exists():
+            if str(receipt.relative_to(stage)) not in proof['files']:
+                raise b.ShrinkError('A provider receipt is not bound to this evidence.')
+            http=b.read(receipt)
+            if http.get('status')!='received' or http.get('http_status')!=200 or http.get('raw_sha256')!=b.sha(raw_path):continue
+        try:
+            if 'choices' in payload:
+                if not receipt.exists():continue
+                choices=payload['choices']
+                if len(choices)!=1 or choices[0].get('finish_reason')!='stop':continue
+                message=choices[0]['message']
+                if message.get('refusal') or message.get('audio') or message.get('tool_calls'):continue
+                value=b.parse_audio_text_report(message['content']) if audio else json.loads(message['content'])
+            elif 'candidates' in payload:
+                candidates=payload['candidates']
+                if len(candidates)!=1 or candidates[0].get('finishReason')!='STOP':continue
+                text=''.join(part.get('text','') for part in candidates[0].get('content',{}).get('parts',[]) if not part.get('thought'))
+                value=b.parse_audio_text_report(text) if audio else json.loads(text)
+            elif payload.get('status')=='completed' and not audio:
+                if not receipt.exists():continue
+                texts=[part['text'] for item in payload.get('output',[]) if item.get('type')=='message'
+                       and item.get('status')=='completed' for part in item.get('content',[]) if part.get('type')=='output_text']
+                if len(texts)!=1:continue
+                value=json.loads(texts[0])
+            else:continue
+            b.validate(value,b.AUDIO_SCHEMA if audio else b.REVIEW_SCHEMA)
+            if value==report:matches.append(str(raw_path))
+        except (KeyError,TypeError,ValueError,b.ShrinkError):continue
+    if len(matches)!=1:raise b.ShrinkError('No unique complete provider response supports this review.')
+    return matches[0]
+
+
+def boundary_context(source_frames, final_frames, source_end, output_end, cuts):
+    return {'source_eof': source_end == source_frames, 'output_eof': output_end == final_frames,
+        'uncut_source_tail': not any(c['end']*b.RATE > source_frames-15*b.RATE for c in cuts)}
+
+
+def review_decision(directory, client, report, src, out, context):
+    try:
+        b.require_pass(report, [])
+        return None
+    except b.ShrinkError:
+        if not r.boundary_claim_eligible(report, context):
+            raise b.ShrinkError('Audio review found a defect or uncertainty. The complete report is saved; no audio was approved.') from None
+    binding = {'original_report': report, 'source': b.pcm_info(src), 'output': b.pcm_info(out), 'context': context}
+    # Exactly one separately scoped verification per job, including failures.
+    verification = b.once(directory, 'boundary-claim-verification', binding,
+        lambda stage: client.verify_boundary_claim(stage, src, out, report))
+    r.require_boundary_resolution(report, verification, context)
+    return {'context': context, 'report': verification,
+        'evidence': stage_proof(directory/'stages/boundary-claim-verification'),
+        'original_failed_report_preserved': True}
 
 
 def semantic_navigation(words,complete=True):
@@ -114,6 +195,8 @@ def source_for_job(args,directory,client,binding):
         b.save(directory/'source-reuse.json',proof);b.save(directory/'input.json',original)
         return source,original,words,clips
     original=b.acquire(args.url,directory,getattr(args,'local_audio',None));source=directory/'original.wav'
+    if original['master']['seconds'] > 7200:
+        raise b.ShrinkError('This release supports recordings up to two hours; no transcription was requested.')
     words=[];clips=[]
     for index,offset in enumerate(range(0,math.ceil(original['master']['seconds']),b.STEP)):
         frames=min(b.STEP*b.RATE,original['master']['frames']-offset*b.RATE);clip=directory/f'source-{index:03d}.wav'
@@ -226,6 +309,35 @@ def reuse_render(parent,source,original,intervals,tempo):
 
 
 class EditClient(r.PairClient):
+    def __init__(self, directory):
+        super().__init__(directory)
+        self.request_limit = 80
+        self.request_count = 0
+        self.started_at = b.time.time()
+        self.budget_path = directory/'request-budget.json'
+        if self.budget_path.exists():
+            previous = b.read(self.budget_path)
+            self.request_count = previous['requests_started']
+            self.started_at = previous['started_at']
+
+    def reserve_request(self, provider, model):
+        if self.request_count >= self.request_limit or b.time.time()-self.started_at > 7200:
+            raise b.ShrinkError('The per-job request/time budget is exhausted. Saved work is held without another charge.')
+        self.request_count += 1
+        b.save(self.budget_path, {'requests_started': self.request_count, 'request_limit': self.request_limit,
+            'started_at': self.started_at, 'last_provider': provider, 'last_model': model,
+            'requests_include_failures': True, 'automatic_retries': 0, 'dollar_cost_is_not_claimed': True})
+
+    def openai_request(self, root, endpoint, model, **kwargs):
+        if not (root/'request-attempt.json').exists():
+            self.reserve_request('openai', model)
+        return super().openai_request(root, endpoint, model, **kwargs)
+
+    def request(self, method, endpoint, **kwargs):
+        if method == 'POST' and (':generateContent' in endpoint or endpoint == '/v1beta/interactions'):
+            self.reserve_request('gemini', endpoint.split('/models/')[-1].split(':')[0])
+        return super().request(method, endpoint, **kwargs)
+
     def independent_text_review(self,root,prompt):
         model=b.os.getenv('SHRINK_OPENAI_CRITIC_MODEL','gpt-6-sol')
         effort=b.os.getenv('SHRINK_OPENAI_CRITIC_EFFORT','low')
@@ -421,11 +533,13 @@ def run_job(args,client_factory=EditClient):
     directory=Path(args.output).resolve();directory.mkdir(parents=True,exist_ok=True)
     client=client_factory(directory)
     contract=(b.REPO/'config/shrink-original.md').read_text();text_contract=(b.REPO/'config/shrink-text-review.md').read_text()
-    binding={'policy':'source-relative-candidate-v2','code':b.sha(Path(__file__)),'pair_code':b.sha(Path(__file__).with_name('shrink_reliable.py')),
+    binding={'policy':POLICY,'code':b.sha(Path(__file__)),'pair_code':b.sha(Path(__file__).with_name('shrink_reliable.py')),
         'base_code':b.sha(Path(__file__).with_name('shrink_original.py')),'contract':b.fingerprint(contract),'text_contract':b.fingerprint(text_contract),
         'provider_config':client.provider_config,'tempo':args.tempo,
         'text_critic_model':b.os.getenv('SHRINK_OPENAI_CRITIC_MODEL','gpt-6-sol'),'text_critic_effort':b.os.getenv('SHRINK_OPENAI_CRITIC_EFFORT','low')}
     source,original,words,clips=source_for_job(args,directory,client,binding)
+    if original['master']['seconds'] > 7200:
+        raise b.ShrinkError('This release supports recordings up to two hours.')
     binding['input']=original;b.save(directory/'navigation.json',words)
     semantic=semantic_navigation(words)
     plan_prompt=f'{contract}\nPropose a modest listener-friendly chronological original-voice edit. Read the COMPLETE source below. Genuine non-semantic repeated false starts may be omitted when their surviving utterance keeps its full meaning and voice; emphatic repetition or humor must remain. Advertising/housekeeping can be removed, but substantive product discussions and examples are not ads merely because a product is named. ASR errors in passages retained unchanged are not a blanket reason to reject every unrelated safe candidate. These are provisional text proposals only; actual source/output audio comparisons veto every unsafe/uncertain cut. Return cuts,pauses,protected,notes with the exact requested schema. Never force a reduction. Protect substantive material while leaving only explicitly justified expendable spans eligible for cuts. If cutting a discarded false-start copy, protect its surviving complete utterance, not the discarded copy. Do not select unknown physical speaker changes from text. Word IDs follow the stated rule.\nCOMPLETE SOURCE DATA: {json.dumps(semantic,ensure_ascii=False,separators=(",",":"))}\nPOSSIBLE REPETITION CUES (not acoustic proof or approval): {json.dumps(repeated_phrase_cues(words),ensure_ascii=False,separators=(",",":"))}'
@@ -470,6 +584,7 @@ def run_job(args,client_factory=EditClient):
         rendered=b.once(directory,'render',{**binding,'intervals':intervals},lambda root:b.render(source,intervals,root,args.tempo))
     final=Path(rendered['audio']).parent/'edited.wav'
     if b.sha(final)!=rendered['rendered_wav_sha256']:raise b.ShrinkError('Rendered listening master changed.')
+    verify_retained_cut(source, final.parent/'cut.wav', intervals)
     if getattr(args,'stop_after',None)=='render':return {'stopped_after':'render','rendered':rendered,'no_delivery':True}
     # Each actual join is checked against the real original surrounding speech.
     model=physical_model(intervals)
@@ -511,18 +626,27 @@ def run_job(args,client_factory=EditClient):
                 'physical_scope_is_not_word_alignment':True}
             report=b.once(directory,f'final-compare-{part_index:03d}-{window_index:03d}',{**binding,'part':part['sha256'],
                 'source':b.sha(src),'output':b.sha(out),'transform':transform},lambda stage:client.compare(stage,src,out,transform))
-            b.require_pass(report,[])
-            reports.append({'first_frame':offset,'last_frame':stop,'report':report,'source':b.pcm_info(src),'output':b.pcm_info(out)})
+            context=boundary_context(original['master']['frames'],b.pcm_info(final)['frames'],z,part['first_frame']+stop,cuts)
+            resolution=review_decision(directory,client,report,src,out,context)
+            reports.append({'first_frame':offset,'last_frame':stop,'report':report,
+                'source':str(src.resolve()),'source_info':b.pcm_info(src),'output':str(out.resolve()),'output_info':b.pcm_info(out),
+                'source_frames':[a,z],'boundary_resolution':resolution,
+                'evidence':stage_proof(directory/'stages'/f'final-compare-{part_index:03d}-{window_index:03d}')})
             if stop==info['frames']:break
             offset=stop-2*b.RATE;window_index+=1
         media.append({**part,'comparison_reports':reports,'review':{'pass':True,'issues':[],'uncertainties':[],'checked_ids':[],
             'protected_ids':[],'heard_start':reports[0]['report']['heard_start'],'heard_end':reports[-1]['report']['heard_end']}})
     if b.pcm_info(source)!=original['master'] or client.quota_stop:raise b.ShrinkError('Input changed or quota stopped; no publication.')
-    result={**rendered,'policy':'source-relative-candidate-v2','title':original['title'],'source_seconds':original['master']['seconds'],
+    result={**rendered,'policy':POLICY,'title':original['title'],'source_seconds':original['master']['seconds'],
         'reduction_fraction':1-rendered['duration_seconds']/original['master']['seconds'],'cut_count':len(cuts),'chat_audio':media,
         'automatic_reviews_passed':True,'human_listening_claimed':False,'source_claims_independently_verified':False,
         'editing_profile':'chronological-cuts-and-tempo' if cuts else 'tempo-only-no-semantic-cuts',
-        'source_relative_reviews':True,'all_delivery_frames_owned_once':True,'provider':client.provider}
+        'source_relative_reviews':True,'all_delivery_frames_owned_once':True,'provider':client.provider,
+        'source_path':str(source.resolve()),'text_report':text_report,
+        'text_evidence':stage_proof(directory/'stages/text-review') if not getattr(args,'reuse_text_review',None) else
+            stage_proof(Path(args.reuse_text_review).resolve()/'stages/text-review'),
+        'join_evidence':[{'report':b.read(directory/'stages'/f'join-review-{i:03d}'/'result.json'),
+            'proof':stage_proof(directory/'stages'/f'join-review-{i:03d}')} for i in range(len(cuts))]}
     b.save(directory/'result.json',result)
     # Candidate mode intentionally has no external publication path.
     return result

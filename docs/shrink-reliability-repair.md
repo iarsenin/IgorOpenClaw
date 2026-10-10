@@ -3,8 +3,61 @@
 The original `/shrink` release had no successful full-episode delivery. Unit
 tests and service health checks did not establish that the product worked.
 Production processing is therefore paused with an explicit maintenance message;
-`/sum` remains available. The new implementation is local and experimental, not
-enabled as the queue worker and not pushed as a finished release.
+`/sum` remains available. The replacement is now connected to the queue in code,
+but maintenance still blocks production enqueue and direct worker invocation.
+It is not being presented as a finished release.
+
+## Current release decision — October 10, later validation
+
+**Do not reopen general `/shrink` yet.** The native command-to-worker-to-WhatsApp
+path succeeded on a short interview, but original recording fragments still
+produce contradictory audio-review findings. The new boundary verification did
+not resolve that failure. A passing happy path is not sufficient release evidence.
+
+| Check | Observed outcome |
+| --- | --- |
+| Actual command handler → Python enqueue → v3 worker → WhatsApp | Passed: 45-second interview became 42.11 seconds; one actual non-dry-run platform receipt. Gemini handled the three live requests. |
+| GPT-only v3 pipeline on the same fixed short fixture | Passed all text/audio gates and complete publication preflight; not sent again. This tests the alternate provider directly, not an actual Google outage. |
+| Original archival sentence-fragment complaint | Still held: one separately scoped verification returned FAIL while transcribing the same ending in both fields. Neither the original nor new rejection was rewritten. |
+| Deliberately deleted ending | Correctly rejected: removing the final three seconds produced different heard endings and a missing-phrase issue. No damaged audio was sent. |
+| Previously delivered full episode | Provider-free revalidation preserved the exact accepted proof: all 31 windows, 11 parts and previous receipts. No new full-episode run or resend is claimed. |
+
+The general worker now selects only `source-relative-cleanup-v3` jobs. Enqueue
+binds the current implementation and editorial contracts; a changed version
+holds the job before requests. Legacy jobs cannot enter the new route. The
+publisher rechecks the complete text report, all cut reviews, actual encoded
+audio and every source/output window against saved raw provider responses.
+Automatic machine acceptance is explicitly distinct from MAIN/human acceptance.
+It cannot reuse the old case-specific manual approval or transfer to another
+recipient. Failed/uncertain requests and ambiguous sends never replay.
+
+The boundary diagnosis is limited to a single end-of-file-only complaint, an
+uncut final source passage and a separately reviewed complete source/output pair.
+It can approve nothing by itself: its own complete report must pass without
+issues/uncertainty and contain matching final phrases. The observed contradictory
+FAIL therefore remains a release blocker. There is no “matching words means
+ignore the failure” rule and no second verification attempt.
+
+The candidate limits input to two hours and records at most 80 billable-stage
+request starts, including failures and both sides of a provider switch. It stops
+starting requests after two hours of job age. Individual in-flight timeouts can
+extend wall time. These are workload/request limits, **not a dollar budget or
+invoice upper bound**. Usage stays in the original case ledgers, with cached,
+internal, failed and unknown usage not silently treated as free. The unrelated
+historical eight-case benchmark budget is not reset or reused.
+
+Private live evidence is under `output/shrink/reliability-release-20261010/`.
+Only code, offline tests and documentation belong in Git; no audio, transcripts,
+provider responses, credentials or recipient identifiers are published.
+
+The clean staged-tree regression suite passes 117 Python tests (outbound sockets
+disabled) and 22 JavaScript command/integration tests, including `/sum`, recipient binding,
+maintenance, raw-evidence tampering, incomplete coverage, version mismatch and
+ambiguous delivery. Synthetic/unit fixtures are mechanical checks, not acoustic
+approval. The live run used eight provider requests: three Gemini requests for
+the delivered short test, three OpenAI requests for the non-delivered comparison
+run, and two separate one-shot OpenAI boundary tests. Existing ASR was reused;
+there was no new transcription, full-episode provider run or full-episode resend.
 
 ## What is actually verified
 
@@ -100,10 +153,11 @@ unchanged.
 The user explicitly requested publishing the changes and restarting the server.
 This publication contains the maintenance stop, lossless report reader, isolated
 experimental source-relative pipeline and its tests, and this incident record.
-It is not activation of the replacement worker. The experimental modules are
-not registered as native commands or selected by the production queue. The
-case-specific publisher still requires exact MAIN acceptance and actual send
-receipts; it is not an unattended production delivery path.
+It was not activation of the replacement worker. At that earlier publication,
+the experimental modules were not selected by the production queue. The later
+v3 wiring above supersedes that routing detail, but not the maintenance block.
+The historical case-specific publisher still requires its exact MAIN acceptance
+and actual send receipts.
 
 The gateway is restarted using its existing LaunchAgent, preserving its private
 error-log destination, credentials, channels and sessions. The general `/shrink`

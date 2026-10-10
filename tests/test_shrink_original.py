@@ -276,7 +276,8 @@ class OriginalTests(unittest.TestCase):
                 mock.patch.object(original.subprocess, "Popen") as spawn:
             response = original.enqueue("https://example.com", "+15551234567")
             job = original.read(Path(temp) / response["id"] / "job.json")
-            self.assertEqual(job["policy"], original.POLICY)
+            self.assertEqual(job["policy"], original.QUEUE_POLICY)
+            self.assertEqual(job['code_fingerprint'],original.release_fingerprint())
             with self.assertRaises(original.ShrinkError):
                 original.enqueue("https://example.com", "+15551234567")
             spawn.assert_not_called()
@@ -294,9 +295,37 @@ class OriginalTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             path = Path(temp) / "job.json"
             original.save(path, {"status": "queued"})
-            with mock.patch.object(original, "run_job") as run, self.assertRaises(original.ShrinkError):
+            with mock.patch.object(original, "state_root",return_value=Path(temp)), mock.patch.object(original, "run_job") as run, self.assertRaises(original.ShrinkError):
                 original.worker(path)
             run.assert_not_called()
+
+    def test_worker_maintenance_blocks_even_direct_worker_invocation(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root=Path(temp); original.save(root/'maintenance.json',{'paused':True})
+            with mock.patch.object(original,'state_root',return_value=root),mock.patch.object(original,'run_reviewed_job') as run:
+                original.worker(root/'nonexistent/job.json')
+                run.assert_not_called()
+
+    def test_current_worker_routes_only_to_checked_pipeline_and_never_replays(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root=Path(temp); path=root/'job.json'
+            original.save(path,{'id':'unit','url':'https://example.com/audio','target':'+15551234567',
+                'policy':original.QUEUE_POLICY,'code_fingerprint':original.release_fingerprint(),'status':'queued'})
+            with mock.patch.object(original,'state_root',return_value=root),mock.patch.object(original,'run_job') as legacy, \
+                 mock.patch.object(original,'run_reviewed_job',return_value={'duration_seconds':10}) as checked:
+                original.worker(path);original.worker(path)
+                checked.assert_called_once();legacy.assert_not_called()
+                self.assertEqual(original.read(path)['status'],'complete')
+
+    def test_changed_release_never_starts_a_provider_or_old_runner(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root=Path(temp); path=root/'job.json'
+            original.save(path,{'id':'unit','url':'https://example.com/audio','target':'+15551234567',
+                'policy':original.QUEUE_POLICY,'code_fingerprint':'different','status':'queued'})
+            with mock.patch.object(original,'state_root',return_value=root),mock.patch.object(original,'run_reviewed_job') as run, \
+                 mock.patch.object(original.shutil,'which',return_value=None):
+                original.worker(path);run.assert_not_called()
+                self.assertEqual(original.read(path)['status'],'failed')
 
     def test_invalid_tempo_rejected_before_provider(self):
         args = argparse.Namespace(url="https://example.com", tempo=1.9)
