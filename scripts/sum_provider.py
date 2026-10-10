@@ -68,6 +68,8 @@ class ProviderRun:
             json.dump(record, stream, ensure_ascii=False, indent=2)
 
     def post(self, provider, endpoint, model, **kwargs):
+        if provider == "openai" and not self.enabled and self.initial != "openai":
+            raise ProviderError("OpenAI fallback is disabled for this /sum run.")
         if self.failed or self.openai_stopped:
             raise ProviderError("OpenAI failed earlier in this /sum run; no further provider requests will run.")
         if provider == "gemini" and self.google_stopped:

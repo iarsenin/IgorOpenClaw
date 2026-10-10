@@ -167,6 +167,20 @@ class SumFallbackTests(unittest.TestCase):
             helper.diarize_transcript_with_gemini(state)
         self.assertEqual(state.transcript_text, labeled)
 
+    def test_fallback_opt_out_also_disables_audio_fallback(self):
+        helper.os.environ["SUM_OPENAI_FALLBACK"] = "0"
+        audio = self.root / "input.wav"; audio.write_bytes(b"wav")
+        state = helper.RunState("https://example.com/a.wav", self.root, audio_path=audio)
+        with provider.scope(self.root / "job"), mock.patch.object(provider.requests, "post", return_value=response({"error": {}}, 429)) as post:
+            self.assertFalse(helper.transcribe_audio(state))
+            post.assert_called_once()
+
+    def test_explicit_openai_mode_is_allowed_when_implicit_fallback_is_disabled(self):
+        helper.os.environ.update(SUM_OPENAI_FALLBACK="0", SUM_PROVIDER="openai")
+        with provider.scope(self.root / "job"), mock.patch.object(provider.requests, "post", return_value=response(gpt())) as post:
+            self.assertEqual(helper.gemini_generate([{"text": "input"}], api_key=""), "complete text")
+            post.assert_called_once()
+
 
 if __name__ == "__main__":
     unittest.main()

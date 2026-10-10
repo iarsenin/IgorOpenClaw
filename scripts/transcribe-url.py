@@ -1694,7 +1694,7 @@ def transcribe_chunk(
                 state.warnings.append(f"Gemini chunk transcription failed for {audio_path.name}: {exc}")
                 if isinstance(exc, provider.ProviderError) and not isinstance(exc, provider.PrimaryUnavailable):
                     raise
-        if choice == "openai" and openai_key and ext in OPENAI_SAFE_EXTENSIONS:
+        if choice == "openai" and openai_key and ext in OPENAI_SAFE_EXTENSIONS and (provider.current().enabled or provider.current().initial == "openai"):
             try:
                 return transcribe_with_openai(audio_path, openai_key)
             except Exception as exc:
@@ -2241,6 +2241,8 @@ def transcribe_audio(state: RunState) -> bool:
     ext = state.audio_path.suffix.lower()
     gemini_key = read_env_key("GOOGLE_API_KEY", "GEMINI_API_KEY")
     openai_key = read_env_key("OPENAI_API_KEY")
+    if not (provider.current().enabled or provider.current().initial == "openai"):
+        openai_key = None
 
     candidate = state.audio_path
     if ext not in GEMINI_SAFE_EXTENSIONS and command_exists("ffmpeg"):

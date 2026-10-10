@@ -159,3 +159,19 @@ independently passed **68 committed Python tests and 17 command tests**, with
 network disabled in the Python suite. The larger 142-test working-tree Python
 count includes historical research that is not part of this release. The staged
 files were checked for the configured secret values; no matches were found.
+
+Release commit `2113ea5` was pushed to `origin/main`. With an empty shrink queue,
+the gateway and worker were restarted; the observed gateway PID was 66013 and
+worker PID 65953. Gateway connectivity passed on localhost:18789, and the
+WhatsApp probe reported enabled, configured, linked, running, connected and
+healthy. No test message was sent. A final configuration regression also checks
+that opting out of implicit OpenAI fallback disables audio as well as text, while
+explicit OpenAI mode remains available. Default-enabled live request shapes are
+unchanged by this guard.
+
+Final release tree `3b974296ab2303179f84ea69e9f49fecce612090` passed **70
+committed Python tests and 17 JavaScript command tests** in a fresh archive.
+The working tree passed **144 Python tests and 17 JavaScript tests**. Both clean
+archives passed without uncommitted research, media, live credentials or network
+access. The last update only honors the explicit fallback opt-out and records
+these checks; it does not change the default-enabled live model requests.
