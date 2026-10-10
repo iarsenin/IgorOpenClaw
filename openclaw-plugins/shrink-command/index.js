@@ -86,6 +86,11 @@ function queue(url, target, execImpl = execFile, options = {}) {
         };
         try {
             env = { ...parseDotEnv(path.join(REPO, ".env")), ...env };
+            const state = path.resolve(env.SHRINK_ORIGINAL_STATE_DIR || path.join(os.homedir(), ".openclaw/state/shrink-original"));
+            if (fs.existsSync(path.join(state, "maintenance.json"))) {
+                reject(new Error("/shrink is temporarily paused for reliability repairs. No job was created or charged. /sum is still available."));
+                return;
+            }
             record.python = (options.resolvePythonImpl ?? resolvePythonCommand)(env);
             if (!record.python) throw new Error("No Python interpreter with requests and beautifulsoup4 is available.");
             persist("started", { status: "started", python: record.python });

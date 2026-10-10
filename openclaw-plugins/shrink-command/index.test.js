@@ -5,7 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import plugin, { parseShrink, whatsappTarget, handle, queue, writeLaunchDiagnostic } from "./index.js";
 
-const launcherTestOptions = { logImpl: () => {}, resolvePythonImpl: () => "/test/python3" };
+const launcherTestOptions = { logImpl: () => {}, resolvePythonImpl: () => "/test/python3", env: { SHRINK_ORIGINAL_STATE_DIR: "/test/not-production-queue" } };
 
 test("parses one URL and refuses shell-like arguments or other commands", () => {
     assert.equal(parseShrink("/sum https://example.com"), null);
@@ -96,6 +96,7 @@ test("missing dependency-aware interpreter holds without spawning a helper", asy
     let spawned = false;
     const records = [];
     await assert.rejects(queue("https://example.com", "+15551234567", () => { spawned = true; }, {
+        env: launcherTestOptions.env,
         logImpl: (id, phase, record) => records.push(record), resolvePythonImpl: () => null,
     }), /Private diagnostic/);
     assert.equal(spawned, false);
@@ -123,5 +124,17 @@ test("private receipts redact configured credentials, bearer tokens and URL keys
         assert.doesNotMatch(data, /secret-key|do-not-log|another-private-token/);
         assert.match(JSON.parse(data).stderr, /Traceback/);
         assert.equal(fs.statSync(filename).mode & 0o777, 0o600);
+    } finally { fs.rmSync(root, { recursive: true }); }
+});
+
+test("maintenance refuses a job before Python, providers or enqueue", async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "shrink-maintenance-"));
+    try {
+        fs.writeFileSync(path.join(root, "maintenance.json"), "{}");
+        let calls = 0;
+        await assert.rejects(queue("https://example.com/audio", "+15551234567", () => calls++, {
+            ...launcherTestOptions, env: { SHRINK_ORIGINAL_STATE_DIR: root }, resolvePythonImpl: () => { calls++; },
+        }), /temporarily paused.*No job was created or charged.*sum/);
+        assert.equal(calls, 0);
     } finally { fs.rmSync(root, { recursive: true }); }
 });

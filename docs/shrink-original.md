@@ -1,8 +1,14 @@
 # /shrink: edit the original recording
 
-The production `/shrink <public-media-URL>` command now makes a chronological
-listening edit using the original voices. It does not rewrite and resynthesize
-the episode. `/sum <URL>` remains the transcript, summary and email command.
+Current status (October 10, 2026): automatic `/shrink` processing is paused for
+reliability repairs. It returns a maintenance message without creating or
+charging a job. `/sum <URL>` remains available. One separately reviewed episode
+has been delivered, but the replacement pipeline is not enabled as the queue
+worker. See the [repair and validation record](shrink-reliability-repair.md).
+
+The workflow below describes the original-voice editing design, not a claim
+that the general command has completed release acceptance. It makes a
+chronological listening edit without rewriting or resynthesizing the episode.
 
 The worker downloads the recording, makes a 24kHz mono PCM navigation master,
 and obtains timestamped ASR in complete, contiguous ten-minute blocks. ASR is

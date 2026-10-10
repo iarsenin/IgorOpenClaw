@@ -55,6 +55,18 @@ class OpenAITests(unittest.TestCase):
         with self.assertRaises(original.ShrinkError):original.require_pass(value, [])
         with self.assertRaises(original.ShrinkError):original.require_pass({**value, "pass": True}, [])
 
+    def test_exact_six_field_json_is_lossless_alternative_not_a_retry_or_report_repair(self):
+        fields={'COVERAGE':'ENTIRE ATTACHED AUDIO REVIEWED','VERDICT':'FAIL','ISSUES':'A missing negative.\nA clipped unit.',
+            'UNCERTAINTIES':'The speaker could not be compared.','HEARD_START':'No, not three.','HEARD_END':'That is the point.'}
+        report=original.parse_audio_text_report(json.dumps(fields))
+        self.assertFalse(report['pass']);self.assertEqual(report['issues'],[fields['ISSUES']]);self.assertEqual(report['uncertainties'],[fields['UNCERTAINTIES']])
+        for changed in ({**fields,'ISSUES':[]},{**fields,'extra':'NONE'},{k:v for k,v in fields.items() if k!='COVERAGE'},
+                        {**fields,'COVERAGE':'INCOMPLETE'},{**fields,'VERDICT':True}):
+            with self.assertRaises(original.ShrinkError):original.parse_audio_text_report(json.dumps(changed))
+        for text in ('{"COVERAGE":"ENTIRE ATTACHED AUDIO REVIEWED",}',
+                     json.dumps(fields)[:-1]+',"ISSUES":"NONE"}'):
+            with self.assertRaises(original.ShrinkError):original.parse_audio_text_report(text)
+
     def test_plain_audit_rejects_missing_duplicate_fenced_incomplete_or_invented_sections(self):
         for value in (None, "", "preface\n" + AUDIT, "```\n" + AUDIT + "\n```",
                       AUDIT.replace("ENTIRE ATTACHED AUDIO REVIEWED", "INCOMPLETE"),
