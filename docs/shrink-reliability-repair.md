@@ -2,6 +2,23 @@
 
 ## Ending-check repair — October 10 evening
 
+**Production `/shrink` is active again.** At 01:45 UTC on October 11 (21:45 on
+October 10 in New York), the validated worker was enabled and the gateway
+restarted. Worker PID 83048 and gateway PID 83050 were running; gateway RPC and
+configuration probes passed. WhatsApp was linked, running and connected with no
+reported error. The worker error log remained empty and the gateway error log
+did not grow during this activation. The queue IO check passed with zero provider
+requests, and no old queued or running job was resumed.
+
+The original gateway/worker plists, credentials and channel configuration retained
+their hashes. The maintenance marker was archived with its exact original bytes
+under the private queue's `release-history/`; earlier release holds remain in
+their original evidence directories. Code commit `d0d413d`, the exact current
+release fingerprint and all real test receipts are bound in the private
+`reliability-ending-fix-20261010/release-acceptance.json`. Clean staged-checkout
+validation passed all 122 Python tests with outbound sockets disabled, and all
+22 JavaScript command/integration tests.
+
 The remaining recording-fragment failure has a bounded repair. Each recording
 now receives its own complete, blind literal ending reading. The reader reports
 coverage, audible words and uncertainty; it is not asked to grade whether the

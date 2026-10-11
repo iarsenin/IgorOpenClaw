@@ -1,7 +1,7 @@
 # /shrink: edit the original recording
 
-Release status (October 10, 2026): the ending-check repair and live command tests
-are complete; production activation is being verified. `/sum <URL>` is unchanged.
+Release status (October 10, 2026 evening): `/shrink` is active again with the
+ending-check repair and preferred GPT audio verification. `/sum <URL>` is unchanged.
 The new tests include fresh acquisition/transcription, real cuts, all text/audio
 gates and actual WhatsApp delivery. See the [repair and activation record](shrink-reliability-repair.md).
 
