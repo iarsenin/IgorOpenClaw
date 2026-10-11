@@ -1,13 +1,66 @@
-# Reliability repair — not a new production release
+# /shrink reliability repair and release record
+
+## Ending-check repair — October 10 evening
+
+The remaining recording-fragment failure has a bounded repair. Each recording
+now receives its own complete, blind literal ending reading. The reader reports
+coverage, audible words and uncertainty; it is not asked to grade whether the
+original sentence is complete. The application compares the two observed phrases.
+An incomplete reading, uncertainty, missing evidence or different ending still
+blocks the diagnosis. The earlier failed comparison and every failed experiment
+remain unchanged.
+
+Only an end-of-file-only missing-speech complaint on an uncut final source span
+can use this diagnosis. Other defects and uncertainty still stop delivery. The
+publisher verifies both independent raw responses, their complete receipts,
+actual inputs, prompts and current protocol. A transcript from one reading or a
+previous complaint never reaches the other recording's reader.
+
+The released default selects `gpt-audio-1.5` for audio checks when the existing
+OpenAI credential is available and fallback is enabled. Gemini can still perform
+transcription and text editing/review. This choice is made before requests;
+failed quality checks do not trigger provider shopping. Explicit fallback opt-out
+is respected, and `SHRINK_AUDIO_PROVIDER` can explicitly choose the audio route.
+Gemini's literal ending test disagreed on a final fragment of the preserved
+recording and was not qualified as the default audio checker. Its failure is
+retained rather than normalized into agreement.
+
+The GPT literal reader passed the fixed preserved-ending and deliberately
+deleted-ending controls. Both full readings completed, with no uncertainty; the
+damaged output's observed ending differed from the source. An earlier generic
+quality-reading control stopped on the source's sentence fragment before reading
+the damaged output; it is an invalid deletion control, not a successful detector.
+The intermediate blind paired attempt also failed. These attempts are preserved
+and count toward recorded usage.
+
+The formerly held 45-second archival fixture passed the actual command, worker
+and delivery path, producing 42.11 seconds. A separate fresh 45-second interview
+test exercised downloading and a new Gemini transcription, three conservative
+filler/restart cuts, independent complete text review, all three actual join
+reviews, final GPT audio review, exact publication preflight and WhatsApp receipt.
+Its delivered result was 39.87 seconds. No source word or timestamp was corrected.
+These are actual API and transport tests, separate from offline unit fixtures.
+
+The previously delivered full episode was revalidated against the identical
+accepted proof: all 31 windows and 11 outgoing files. There was no new full-episode
+provider run or resend. `/sum` implementation is unchanged. The release regression
+suite now passes 122 Python tests and 22 JavaScript tests; clean checkout validation
+and the activation observations are recorded below.
+
+Private new evidence is under `output/shrink/reliability-ending-fix-20261010/`.
+The historical maintenance and release holds below describe earlier decisions;
+this section supersedes their NEXT/release-block prose once activation is recorded.
+
+## Historical containment and earlier release decisions
 
 The original `/shrink` release had no successful full-episode delivery. Unit
 tests and service health checks did not establish that the product worked.
-Production processing is therefore paused with an explicit maintenance message;
+Production processing was therefore paused with an explicit maintenance message;
 `/sum` remains available. The replacement is now connected to the queue in code,
 but maintenance still blocks production enqueue and direct worker invocation.
 It is not being presented as a finished release.
 
-## Current release decision — October 10, later validation
+## Earlier release decision — October 10, afternoon validation
 
 **Do not reopen general `/shrink` yet.** The native command-to-worker-to-WhatsApp
 path succeeded on a short interview, but original recording fragments still

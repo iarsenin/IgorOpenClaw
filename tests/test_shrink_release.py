@@ -19,8 +19,10 @@ PASS={'pass':True,'issues':[],'uncertainties':[],'checked_ids':[],'protected_ids
 def response(root,report,audio):
     private=root/'openai';private.mkdir(parents=True,exist_ok=True)
     if audio:
-        fields={'COVERAGE':'ENTIRE ATTACHED AUDIO REVIEWED','VERDICT':'PASS','ISSUES':'NONE',
-                'UNCERTAINTIES':'NONE','HEARD_START':report['heard_start'],'HEARD_END':report['heard_end']}
+        fields={'COVERAGE':'ENTIRE ATTACHED AUDIO REVIEWED','VERDICT':'PASS' if report['pass'] else 'FAIL',
+                'ISSUES':'\n'.join(report['issues']) or 'NONE',
+                'UNCERTAINTIES':'\n'.join(report['uncertainties']) or 'NONE',
+                'HEARD_START':report['heard_start'],'HEARD_END':report['heard_end']}
         raw={'choices':[{'finish_reason':'stop','message':{'content':json.dumps(fields)}}]}
     else:
         raw={'status':'completed','output':[{'type':'message','role':'assistant','status':'completed',
@@ -42,8 +44,22 @@ class FakeClient:
         return response(root,PASS,True)
 
 
+class FakeBoundaryClient(FakeClient,p.r.PairClient):
+    def compare(self,root,source,output,transform):
+        b.save(root/'comparison-contract.json',{'source_info':b.pcm_info(source),'output_info':b.pcm_info(output)})
+        return response(root,{**PASS,'pass':False,'issues':['The output ends abruptly, missing the remainder of the sentence.']},True)
+    def read_ending(self,root,audio,prompt):
+        b.save(root/'ending-reading-contract.json',{'protocol':p.r.BOUNDARY_PROTOCOL,'input':b.pcm_info(audio),
+            'system':p.r.ENDING_SYSTEM,'prompt':prompt,'schema':p.r.ENDING_SCHEMA})
+        private=root/'openai'
+        fields={'COVERAGE':'ENTIRE ATTACHED AUDIO REVIEWED','UNCERTAINTIES':'NONE','ENDING':'unit fixture ending'}
+        b.save(private/'raw.json',{'choices':[{'finish_reason':'stop','message':{'content':json.dumps(fields)}}]})
+        b.save(private/'request-attempt.json',{'status':'received','http_status':200,'raw_sha256':b.sha(private/'raw.json')})
+        return p.r.parse_ending_report(json.dumps(fields))
+
+
 class ReleaseTests(unittest.TestCase):
-    def build(self,root):
+    def build(self,root,client=FakeClient):
         source=root/'source.wav'
         with wave.open(str(source),'wb') as stream:
             stream.setparams((1,2,b.RATE,0,'NONE','not compressed'));stream.writeframes(bytes([1,0])*16*b.RATE)
@@ -54,7 +70,7 @@ class ReleaseTests(unittest.TestCase):
         args=argparse.Namespace(url=original['url'],output=str(directory),tempo=1.08)
         with mock.patch.object(p,'source_for_job',return_value=(source,original,words,[source])), \
              mock.patch.object(p,'sentence_boundary_hints',return_value=[]):
-            result=p.run_job(args,FakeClient)
+            result=p.run_job(args,client)
         b.save(directory/'job.json',{'policy':p.POLICY,'target':'+15551234567','status':'running',
                'code_fingerprint':b.release_fingerprint()})
         return directory,result
@@ -102,6 +118,18 @@ class ReleaseTests(unittest.TestCase):
             b.save(directory/'delivery-000.json',{'status':'sending','fingerprint':'uncertain'})
             with mock.patch.object(s.shutil,'which',return_value='fake-cli'),mock.patch.object(s.Path,'home',return_value=Path(temp)),self.assertRaises(b.ShrinkError):
                 s.deliver(directory,'+15551234567')
+
+    def test_ending_resolution_rechecks_two_actual_raw_readings_and_preserves_rejection(self):
+        with tempfile.TemporaryDirectory() as temp:
+            directory,result=self.build(Path(temp),FakeBoundaryClient)
+            entry=result['chat_audio'][0]['comparison_reports'][0]
+            self.assertFalse(entry['report']['pass'])
+            self.assertEqual(set(entry['boundary_resolution']['report']),{'source','output'})
+            s.preflight(directory)
+            changed=copy.deepcopy(result)
+            changed['chat_audio'][0]['comparison_reports'][0]['boundary_resolution']['reading_evidence']['output']=entry['boundary_resolution']['reading_evidence']['source']
+            b.save(directory/'result.json',changed)
+            with self.assertRaises(b.ShrinkError):s.preflight(directory)
 
 
 if __name__=='__main__':unittest.main()

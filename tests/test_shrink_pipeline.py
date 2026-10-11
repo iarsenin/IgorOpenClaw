@@ -29,12 +29,14 @@ class PipelineTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             root=pathlib.Path(temp);source=root/'source.wav';audio(source)
             failed={**PASS,'pass':False,'issues':['The output ends abruptly, omitting the remainder of the sentence.']}
-            client=mock.Mock();client.verify_boundary_claim.return_value=failed
+            readings={'source':{'complete':True,'uncertainties':[],'heard_end':'actual source ending'},
+                'output':{'complete':True,'uncertainties':['The final word is uncertain.'],'heard_end':'actual output ending'}}
+            client=mock.Mock();client.verify_boundary_claim.return_value=readings
             context={'source_eof':True,'output_eof':True,'uncut_source_tail':True}
             for _ in range(2):
                 with self.assertRaises(p.b.ShrinkError):p.review_decision(root,client,failed,source,source,context)
             client.verify_boundary_claim.assert_called_once()
-            self.assertEqual(p.b.read(root/'stages/boundary-claim-verification/result.json'),failed)
+            self.assertEqual(p.b.read(root/'stages/boundary-claim-verification/result.json'),readings)
             self.assertEqual(failed['pass'],False)
 
     def test_budget_counts_failures_and_blocks_before_next_request(self):

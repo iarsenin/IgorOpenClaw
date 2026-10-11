@@ -156,10 +156,24 @@ def preflight_pipeline(directory,result):
             if resolution is not None:
                 context=p.boundary_context(original['master']['frames'],frames,z,last,cuts)
                 if context!=resolution['context']:raise b.ShrinkError('Boundary exception has no physical basis.')
-                p.verify_raw_report(resolution['evidence'],resolution['report'])
+                p.verify_stage(resolution['evidence'],resolution['report'])
                 contract=b.read(Path(resolution['evidence']['stage'])/'boundary-contract.json')
                 if (contract['source_info']!=entry['source_info'] or contract['output_info']!=entry['output_info']
-                    or contract['original_report']!=entry['report']):raise b.ShrinkError('Boundary diagnosis belongs to another rejection.')
+                    or contract['original_report']!=entry['report'] or contract.get('protocol')!=r.BOUNDARY_PROTOCOL
+                    or contract.get('original_report_supplied_to_provider') is not False
+                    or contract['system']!=r.ENDING_SYSTEM or contract.get('independent_inputs') is not True):
+                    raise b.ShrinkError('Ending diagnosis is not the current independent review of these inputs.')
+                for label,info in [('source',entry['source_info']),('output',entry['output_info'])]:
+                    proof=resolution['reading_evidence'][label]
+                    p.verify_raw_report(proof,resolution['report'][label],audio='ending')
+                    prompt=r.boundary_prompt({k:v for k,v in info.items() if k!='sha256'})
+                    attempt=b.read(Path(proof['stage'])/'attempt.json')
+                    reading_contract=b.read(Path(proof['stage'])/'ending-reading-contract.json')
+                    if (contract['prompts'][label]!=prompt or attempt['binding']['input']!=info
+                        or attempt['binding']['prompt']!=prompt or attempt['binding']['protocol']!=r.BOUNDARY_PROTOCOL
+                        or reading_contract!={'protocol':r.BOUNDARY_PROTOCOL,'input':info,'system':r.ENDING_SYSTEM,
+                            'prompt':prompt,'schema':r.ENDING_SCHEMA}):
+                        raise b.ShrinkError('Independent ending evidence belongs to another recording or prompt.')
             payloads.append(entry)
     b.command(['ffmpeg','-v','error','-i',result['audio'],'-f','null','-'])
     return result,{'policy':p.POLICY,'result_sha256':b.sha(directory/'result.json'),

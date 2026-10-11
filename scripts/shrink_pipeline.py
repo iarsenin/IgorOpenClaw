@@ -55,12 +55,13 @@ def verify_raw_report(proof, report, audio=True):
                 if len(choices)!=1 or choices[0].get('finish_reason')!='stop':continue
                 message=choices[0]['message']
                 if message.get('refusal') or message.get('audio') or message.get('tool_calls'):continue
-                value=b.parse_audio_text_report(message['content']) if audio else json.loads(message['content'])
+                value=(r.parse_ending_report(message['content']) if audio=='ending' else
+                    b.parse_audio_text_report(message['content']) if audio else json.loads(message['content']))
             elif 'candidates' in payload:
                 candidates=payload['candidates']
                 if len(candidates)!=1 or candidates[0].get('finishReason')!='STOP':continue
                 text=''.join(part.get('text','') for part in candidates[0].get('content',{}).get('parts',[]) if not part.get('thought'))
-                value=b.parse_audio_text_report(text) if audio else json.loads(text)
+                value=r.parse_ending_report(text) if audio=='ending' else b.parse_audio_text_report(text) if audio else json.loads(text)
             elif payload.get('status')=='completed' and not audio:
                 if not receipt.exists():continue
                 texts=[part['text'] for item in payload.get('output',[]) if item.get('type')=='message'
@@ -68,7 +69,7 @@ def verify_raw_report(proof, report, audio=True):
                 if len(texts)!=1:continue
                 value=json.loads(texts[0])
             else:continue
-            b.validate(value,b.AUDIO_SCHEMA if audio else b.REVIEW_SCHEMA)
+            b.validate(value,r.ENDING_SCHEMA if audio=='ending' else b.AUDIO_SCHEMA if audio else b.REVIEW_SCHEMA)
             if value==report:matches.append(str(raw_path))
         except (KeyError,TypeError,ValueError,b.ShrinkError):continue
     if len(matches)!=1:raise b.ShrinkError('No unique complete provider response supports this review.')
@@ -87,13 +88,15 @@ def review_decision(directory, client, report, src, out, context):
     except b.ShrinkError:
         if not r.boundary_claim_eligible(report, context):
             raise b.ShrinkError('Audio review found a defect or uncertainty. The complete report is saved; no audio was approved.') from None
-    binding = {'original_report': report, 'source': b.pcm_info(src), 'output': b.pcm_info(out), 'context': context}
+    binding = {'protocol':r.BOUNDARY_PROTOCOL,'original_report': report, 'source': b.pcm_info(src), 'output': b.pcm_info(out), 'context': context}
     # Exactly one separately scoped verification per job, including failures.
     verification = b.once(directory, 'boundary-claim-verification', binding,
         lambda stage: client.verify_boundary_claim(stage, src, out, report))
     r.require_boundary_resolution(report, verification, context)
-    return {'context': context, 'report': verification,
+    return {'protocol':r.BOUNDARY_PROTOCOL,'context': context, 'report': verification,
         'evidence': stage_proof(directory/'stages/boundary-claim-verification'),
+        'reading_evidence':{label:stage_proof(directory/'stages/boundary-claim-verification/stages'/('ending-'+label))
+            for label in ('source','output')},
         'original_failed_report_preserved': True}
 
 
@@ -371,7 +374,7 @@ class EditClient(r.PairClient):
             {k:v for k,v in output_info.items() if k!='sha256'},proposal)
         prompt+='\nIMPORTANT: Every declared removal is PROVISIONAL, not approved. Evaluate the removal itself. Reject even a declared removal if it removes substantive meaning, a question, a necessary example/joke, a negative, quantity, unit, mechanism, qualifier or another physical speaker, or produces an unnatural join. Only an acoustically definite non-semantic false start/filler, redundant restatement whose work survives, or expendable housekeeping is removable. No ASR or expected words are supplied. Uncertainty about any proposed removal requires FAIL.'
         b.save(root/'edit-comparison-contract.json',{'source':source_info,'output':output_info,'prompt':prompt,'system':r.PAIR_SYSTEM,'proposal':proposal})
-        return self.routed(root,lambda:self._gemini_pair(root/'gemini',source,output,prompt),lambda:self._openai_pair(root/'openai',source,output,prompt))
+        return self.audio_routed(root,lambda:self._gemini_pair(root/'gemini',source,output,prompt),lambda:self._openai_pair(root/'openai',source,output,prompt))
 
 
 def reuse_text_review(parent,prompt,plan,cuts,model,effort):
@@ -536,6 +539,7 @@ def run_job(args,client_factory=EditClient):
     binding={'policy':POLICY,'code':b.sha(Path(__file__)),'pair_code':b.sha(Path(__file__).with_name('shrink_reliable.py')),
         'base_code':b.sha(Path(__file__).with_name('shrink_original.py')),'contract':b.fingerprint(contract),'text_contract':b.fingerprint(text_contract),
         'provider_config':client.provider_config,'tempo':args.tempo,
+        'audio_provider':getattr(client,'audio_provider',client.provider),
         'text_critic_model':b.os.getenv('SHRINK_OPENAI_CRITIC_MODEL','gpt-6-sol'),'text_critic_effort':b.os.getenv('SHRINK_OPENAI_CRITIC_EFFORT','low')}
     source,original,words,clips=source_for_job(args,directory,client,binding)
     if original['master']['seconds'] > 7200:
@@ -642,6 +646,7 @@ def run_job(args,client_factory=EditClient):
         'automatic_reviews_passed':True,'human_listening_claimed':False,'source_claims_independently_verified':False,
         'editing_profile':'chronological-cuts-and-tempo' if cuts else 'tempo-only-no-semantic-cuts',
         'source_relative_reviews':True,'all_delivery_frames_owned_once':True,'provider':client.provider,
+        'audio_provider':getattr(client,'audio_provider',client.provider),
         'source_path':str(source.resolve()),'text_report':text_report,
         'text_evidence':stage_proof(directory/'stages/text-review') if not getattr(args,'reuse_text_review',None) else
             stage_proof(Path(args.reuse_text_review).resolve()/'stages/text-review'),

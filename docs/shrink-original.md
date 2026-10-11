@@ -1,15 +1,11 @@
 # /shrink: edit the original recording
 
-Current status (October 10, 2026): automatic `/shrink` processing is paused for
-reliability repairs. It returns a maintenance message without creating or
-charging a job. `/sum <URL>` remains available. One separately reviewed episode
-has been delivered. The replacement pipeline is wired into the queue in code,
-but its worker remains unloaded and production enqueue is blocked. A short
-command-to-WhatsApp test passed; the original-fragment review failure still
-blocks general release. See the [repair and validation record](shrink-reliability-repair.md).
+Release status (October 10, 2026): the ending-check repair and live command tests
+are complete; production activation is being verified. `/sum <URL>` is unchanged.
+The new tests include fresh acquisition/transcription, real cuts, all text/audio
+gates and actual WhatsApp delivery. See the [repair and activation record](shrink-reliability-repair.md).
 
-The workflow below describes the original-voice editing design, not a claim
-that the general command has completed release acceptance. It makes a
+The workflow makes a
 chronological listening edit without rewriting or resynthesizing the episode.
 
 The worker downloads the recording, makes a 24kHz mono PCM navigation master,
@@ -44,6 +40,10 @@ original download, PCM, ASR, proposed cuts, reports and usage remain private.
    Reviews are model judgments, not personal human listening or proof that all
    future defects will be detected. The local continuous AAC has technical
    decode checks; the independent listening gate covers the outgoing Opus files.
+   An isolated end-of-file missing-speech complaint can receive one diagnosis:
+   separate complete literal readings of the original and outgoing recordings.
+   Both readings must be complete and definite and their ending phrases must
+   match. Only an uncut final source passage is eligible; other issues stay held.
 7. Only reviewed, hash-bound files go to the requesting direct WhatsApp chat.
    Every part is preflighted before the first send. An uncertain delivery receipt
    blocks resending, rather than guessing whether a message was delivered.
@@ -110,6 +110,7 @@ There are no global dependency upgrades in this deployment.
 | `SHRINK_EDIT_MODEL` | `gemini-3.1-pro-preview` |
 | `SHRINK_TRANSCRIBE_MODEL` | `gemini-3.5-transcribe` |
 | `SHRINK_AUDIO_REVIEW_MODEL` | `gemini-3.8-flash` |
+| `SHRINK_AUDIO_PROVIDER` | `openai` when its credential is available and fallback is enabled; otherwise `gemini`. Explicit setting overrides the default. |
 | `SHRINK_FIDELITY_REVIEW_MODEL` | `gemini-3.6-flash` |
 | `OPENAI_API_KEY` | Existing OpenAI credential, reused without copying into reports |
 | `SHRINK_OPENAI_FALLBACK` | `1`; set `0` to disable the availability-only switch |
@@ -178,12 +179,13 @@ Long-episode planning and complete text comparisons group exact words and IDs
 with their original local speaker/segment metadata. The final sound review is
 audio-only: it receives both the original source passage and the actual outgoing
 encode decoded to WAV, plus physical scope and declared-edit metadata. It receives
-no expected transcript, speaker identity or earlier verdict. Complete navigation, retained-word context and ID bindings
+no expected transcript, speaker identity or earlier verdict. Complete navigation,
+retained-word context and ID bindings
 remain saved for the separate text/history audit; they are not sent to the final
-listener. A single separately scoped end-of-file complaint diagnosis may receive
-the original complaint as an untrusted hypothesis, alongside both complete
-recordings. It cannot suppress a failed or uncertain report. No source word,
-timestamp or acceptance rule is softened to fit.
+listener. A single separately scoped ending diagnosis supplies each complete
+recording to its own literal reader. It sends no original complaint or peer
+transcript. Coverage and definite ending words must match; original comparison
+reports and each literal reading remain separately visible in the evidence.
 
 The OpenAI final listener returns ordinary text in six strictly framed sections
 (coverage, verdict, issues, uncertainties and the two audible boundary phrases).
