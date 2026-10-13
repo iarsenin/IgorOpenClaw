@@ -9,6 +9,10 @@ recovery reuses verified transcription responses, retains original speech when
 a cut is disputed, and separates source-sample preservation from approximately
 timed word matching. CRLF report formatting no longer causes rejection.
 See the [complete customer recovery record](shrink-oct12-recovery.md).
+The repair was pushed and both services restarted at 21:04 New York time.
+Production maintenance is cleared, the queue is ready, gateway/WhatsApp health
+checks passed and neither error log grew during activation. Service configuration
+hashes were preserved; no completed episode was resent.
 
 ## Ending-check repair — October 10 evening
 

@@ -54,3 +54,30 @@ tempo change. This is model-assisted playback checking, not personal listening
 or factual verification of the speakers' claims. No second full download,
 transcription of the first hour, or audio render was needed during the final
 delivery recovery.
+
+## Deployment verification
+
+Implementation commit `0bd8d4e` was pushed to `origin/main`. At 01:04 UTC on
+October 13 (21:04 on October 12 in New York), the existing LaunchAgents were
+restarted without regenerating their configuration. Gateway PID 7447 and worker
+PID 7547 were running. Gateway RPC and configuration checks passed; WhatsApp was
+configured, linked, running and connected, with no reported error.
+
+The temporary maintenance marker was moved, with its original bytes, into the
+queue's private `release-history/maintenance-20261012-before-unicode-fix.json`.
+Production enqueue is enabled again. There were no queued or running production
+jobs to resume. The queue's atomic IO check passed with zero provider requests.
+The worker error log remained empty, and the gateway error log did not grow
+during restart verification.
+
+The gateway and worker plists, OpenClaw configuration and gateway environment
+file retained their exact pre-restart SHA-256 hashes. Credentials and channel
+settings were not rewritten. The `/sum` implementation was not changed; its
+command and integration regression tests passed. All old failed jobs, raw
+responses, rejected editions, usage and actual delivery receipts remain private
+and unchanged. The successful customer recovery was not resent during deployment.
+
+These are deployment observations, not a guarantee that every future episode
+will pass. Uncertain audio, failed provider requests and ambiguous send receipts
+still stop safely. A no-cut conservative result offers only the gentle speed-up,
+not a promise of semantic abridgment.

@@ -1,9 +1,11 @@
 # /shrink: edit the original recording
 
-Release status (October 10, 2026 evening): `/shrink` is active again with the
-ending-check repair and preferred GPT audio verification. `/sum <URL>` is unchanged.
-The new tests include fresh acquisition/transcription, real cuts, all text/audio
-gates and actual WhatsApp delivery. See the [repair and activation record](shrink-reliability-repair.md).
+Release status (October 12, 2026 evening): `/shrink` is active with the
+Unicode-index and CRLF parser repairs, verified partial-transcription reuse,
+and conservative original-speech recovery when a proposed edit is disputed.
+The customer's full episode was delivered in 11 parts; `/sum <URL>` is unchanged.
+The release passed 128 Python and 22 JavaScript tests in a clean staged checkout.
+See the [customer recovery and activation record](shrink-oct12-recovery.md).
 
 The workflow makes a
 chronological listening edit without rewriting or resynthesizing the episode.
