@@ -25,6 +25,29 @@ PASS={'pass':True,'issues':[],'uncertainties':[],'checked_ids':[],'protected_ids
 
 
 class PipelineTests(unittest.TestCase):
+    def test_gemini_cache_reuses_saved_response_with_accent_index_conversion_without_api(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root=pathlib.Path(temp);parent=root/'parent';parent.mkdir();source=parent/'original.wav';audio(source)
+            clip=parent/'source-000.wav';p.r.extract_pcm(source,clip,0,16*p.b.RATE)
+            original={'url':'https://example.com/accent','title':'cache mechanics','master':p.b.pcm_info(source)}
+            p.b.save(parent/'input.json',original)
+            words=[{'text':'No','start_index':0,'end_index':2,'start_offset':1,'end_offset':1.3,'type':'word_info'},
+                {'text':'Poincaré','start_index':3,'end_index':12,'start_offset':2,'end_offset':3,'type':'word_info'}]
+            raw={'status':'completed','steps':[{'type':'model_output','content':[{'type':'text','text':'No Poincaré','annotations':words}]}]}
+            stage=parent/'stages/asr-000';p.b.save(stage/'raw.json',raw);value=p.b.parse_gemini_transcript(raw)
+            p.b.save(stage/'result.json',value);p.b.save(stage/'attempt.json',{'status':'complete','result_sha256':p.b.sha(stage/'result.json'),
+                'binding':{'input':original,'clip':p.b.sha(clip),'provider_config':{'language':'en'}}})
+            destination=root/'new';destination.mkdir();client=mock.Mock()
+            args=argparse.Namespace(url=original['url'],local_audio=None)
+            with mock.patch.object(p.b,'state_root',return_value=root):
+                _,_,nav,_=p.source_for_job(args,destination,client,{})
+            client.transcribe.assert_not_called()
+            self.assertEqual([w['text'] for w in nav],['No','Poincaré'])
+            self.assertTrue(p.b.read(destination/'stages/asr-000/character-index-view.json')['view']['converted'])
+            self.assertEqual(p.b.read(stage/'raw.json'),raw)
+            p.b.save(stage/'raw.json',{**raw,'status':'in_progress'})
+            with self.assertRaises(p.b.ShrinkError):p.verified_cached_asr(parent,0,original,source)
+
     def test_failed_boundary_verification_is_preserved_and_never_replayed(self):
         with tempfile.TemporaryDirectory() as temp:
             root=pathlib.Path(temp);source=root/'source.wav';audio(source)

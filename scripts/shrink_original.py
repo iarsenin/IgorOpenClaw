@@ -18,6 +18,7 @@ import subprocess
 import sys
 import time
 import uuid
+import unicodedata
 from urllib.parse import urlparse
 import wave
 
@@ -71,6 +72,8 @@ def parse_audio_text_report(text):
     """Two exact lossless encodings, never JSON repair or acoustic interpretation."""
     if not isinstance(text, str):
         raise ShrinkError("The audio model returned no complete listening audit.")
+    # A transport line-ending convention is not a different report or verdict.
+    text=text.replace('\r\n','\n')
     if text.lstrip().startswith('{'):
         def unique_fields(pairs):
             result={}
@@ -474,10 +477,7 @@ class Client:
                 "generation_config": {"transcription_config": {"language_codes": [], "mode": {
                     "type": "verbatim", "diarization_mode": "speaker", "timestamp_granularities": ["word"]}}}, "store": False}).json()
         self.raw(root, payload, self.transcription)
-        outputs = [c for step in payload.get("steps", []) if step.get("type") == "model_output" for c in step.get("content", []) if c.get("type") == "text"]
-        if len(outputs) != 1 or not outputs[0].get("text"):
-            raise ShrinkError("Transcription did not return one complete timestamped text result.")
-        return {"text": outputs[0]["text"], "words": [a for a in outputs[0].get("annotations", []) if a.get("type") == "word_info"]}
+        return parse_gemini_transcript(payload)
 
     def openai_request(self, root, endpoint, model, **kwargs):
         if self.openai_quota_stop:
@@ -634,14 +634,54 @@ def seconds(value):
     return number
 
 
+def parse_gemini_transcript(payload):
+    if payload.get('status')!='completed':
+        raise ShrinkError('Transcription did not complete; its saved response is held.')
+    outputs=[c for step in payload.get('steps',[]) if step.get('type')=='model_output'
+        for c in step.get('content',[]) if c.get('type')=='text']
+    if len(outputs)!=1 or not outputs[0].get('text'):
+        raise ShrinkError('Transcription did not return one complete timestamped text result.')
+    return {'text':outputs[0]['text'],'words':[a for a in outputs[0].get('annotations',[]) if a.get('type')=='word_info']}
+
+
+def character_spans(transcript):
+    """Resolve an index convention only when EVERY literal word matches exactly.
+
+    Preserve raw provider indices and clocks. No spelling, punctuation, word,
+    timestamp or speaker repair is permitted here.
+    """
+    text=transcript.get('text');words=transcript.get('words')
+    if not isinstance(text,str) or not words:raise ShrinkError('Timestamped navigation is missing; no cuts can be selected.')
+    if any(type(w.get('start_index')) is not int or type(w.get('end_index')) is not int for w in words):
+        raise ShrinkError('ASR character indices must be integers.')
+    def matches(spans):
+        return all(0<=a<z<=len(text) and text[a:z]==w.get('text') for (a,z),w in zip(spans,words)) and all(
+            a[1]<=z[0] for a,z in zip(spans,spans[1:]))
+    native=[(w['start_index'],w['end_index']) for w in words]
+    if matches(native):return native,{'encodings':['unicode_codepoints'],'converted':False}
+    candidates=[]
+    for name,width in [('utf8_bytes',lambda c:len(c.encode('utf-8'))),
+                       ('utf16_units',lambda c:len(c.encode('utf-16-le'))//2),
+                       ('nfd_codepoints',lambda c:len(unicodedata.normalize('NFD',c)))]:
+        cursor=0;boundaries={0:0}
+        for i,char in enumerate(text):cursor+=width(char);boundaries[cursor]=i+1
+        if any(a not in boundaries or z not in boundaries for a,z in native):continue
+        spans=[(boundaries[a],boundaries[z]) for a,z in native]
+        if matches(spans):candidates.append((name,spans))
+    if not candidates or any(spans!=candidates[0][1] for _,spans in candidates):
+        raise ShrinkError('ASR word text disagrees with its original character span.')
+    return candidates[0][1],{'encodings':[name for name,_ in candidates],'converted':True,
+        'every_word_matched_exactly':True,'words_clocks_and_speakers_unchanged':True}
+
+
 def flatten(transcript, offset, duration, first_id=0):
     if not isinstance(transcript.get("text"), str) or not transcript.get("words"):
         raise ShrinkError("Timestamped navigation is missing; no cuts can be selected.")
     result = []
     previous_char = -1
-    for item in transcript["words"]:
+    spans,_=character_spans(transcript)
+    for item,(begin,finish) in zip(transcript["words"],spans):
         start, end = seconds(item.get("start_offset")), seconds(item.get("end_offset"))
-        begin, finish = item.get("start_index"), item.get("end_index")
         # Word intervals can overlap (including tiny ASR onset reversals).
         # Keep their actual values and transcript order, never sort or retime.
         if (not 0 <= start <= end <= duration + 0.005

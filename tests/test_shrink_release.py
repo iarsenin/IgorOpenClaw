@@ -42,6 +42,9 @@ class FakeClient:
     def compare(self,root,source,output,transform):
         b.save(root/'comparison-contract.json',{'source_info':b.pcm_info(source),'output_info':b.pcm_info(output)})
         return response(root,PASS,True)
+    def review_uncut_output(self,root,audio):
+        b.save(root/'uncut-quality-contract.json',{'profile':'uncut-source-preservation','input':b.pcm_info(audio),'prompt':'unit mechanics'})
+        return response(root,PASS,True)
 
 
 class FakeBoundaryClient(FakeClient,p.r.PairClient):
@@ -58,11 +61,39 @@ class FakeBoundaryClient(FakeClient,p.r.PairClient):
         return p.r.parse_ending_report(json.dumps(fields))
 
 
+class DisputedEditClient(FakeClient):
+    reject_at='text'
+    def generate(self,root,*args):
+        return {'cuts':[{'first_word':1,'last_word':1,'reason':'A deliberately unsafe proposal for the test'}],
+            'pauses':[],'protected':[{'id':'P1','first_word':0,'last_word':0,'reason':'Opening'},
+                {'id':'P2','first_word':2,'last_word':2,'reason':'Quantity'}],'notes':[]}
+    def independent_text_review(self,root,prompt):
+        conservative=root.name=='text-review-conservative'
+        report={'pass':conservative or self.reject_at!='text','issues':[] if conservative or self.reject_at!='text'
+            else ['Proposed cut removes a negative.'],'uncertainties':[],
+            'checked_ids':[] if conservative else [0],'protected_ids':['all-original-words'] if conservative else ['P1','P2']}
+        return response(root,report,False)
+    def review_edit(self,root,source,output,proposal):
+        b.save(root/'edit-comparison-contract.json',{'source':b.pcm_info(source),'output':b.pcm_info(output),'proposal':proposal})
+        return response(root,{**PASS,'pass':False,'issues':['A proposed join clips speech.']},True)
+
+
+class DisputedJoinClient(DisputedEditClient):
+    reject_at='join'
+
+
+class BoundaryEditedClient(DisputedEditClient,FakeBoundaryClient):
+    reject_at='none'
+    def review_edit(self,root,source,output,proposal):
+        b.save(root/'edit-comparison-contract.json',{'source':b.pcm_info(source),'output':b.pcm_info(output),'proposal':proposal})
+        return response(root,PASS,True)
+
+
 class ReleaseTests(unittest.TestCase):
-    def build(self,root,client=FakeClient):
+    def build(self,root,client=FakeClient,seconds=16):
         source=root/'source.wav'
         with wave.open(str(source),'wb') as stream:
-            stream.setparams((1,2,b.RATE,0,'NONE','not compressed'));stream.writeframes(bytes([1,0])*16*b.RATE)
+            stream.setparams((1,2,b.RATE,0,'NONE','not compressed'));stream.writeframes(bytes([1,0])*seconds*b.RATE)
         original={'url':'https://example.com/unit','title':'unit mechanical fixture','master':b.pcm_info(source)}
         words=[{'id':i,'text':word,'start':1+i,'end':1.5+i,'segment':0,'speaker_local':None}
                for i,word in enumerate(['No','not','three'])]
@@ -93,14 +124,27 @@ class ReleaseTests(unittest.TestCase):
                 self.assertEqual(sum(call.args[0][0]=='fake-cli' for call in calls.call_args_list),1)
             self.assertFalse((directory/'main-final-acceptance.json').exists())
 
+    def test_disputed_text_or_join_keeps_all_original_speech_with_fresh_full_checks(self):
+        for client in (DisputedEditClient,DisputedJoinClient):
+            with self.subTest(stage=client.reject_at),tempfile.TemporaryDirectory() as temp:
+                directory,result=self.build(Path(temp),client)
+                self.assertEqual(result['cut_count'],0)
+                self.assertEqual(b.read(directory/'edit-plan.json')['retained_intervals'],[[0,16]])
+                self.assertTrue((directory/'edit-plan-before-recovery.json').exists())
+                self.assertTrue((directory/'conservative-edit-recovery.json').exists())
+                self.assertIn('text-review-conservative',result['text_evidence']['stage'])
+                s.preflight(directory)
+                with self.assertRaises(b.ShrinkError):
+                    p.retain_original_after_edit_rejection(directory,client(directory),{},None,{},[], 'No second recovery',{})
+
     def test_raw_tampering_missing_tail_and_cross_input_reports_fail_before_send(self):
         with tempfile.TemporaryDirectory() as temp:
             directory,result=self.build(Path(temp));original=copy.deepcopy(result)
             for change in ('tail','scope','raw','text'):
-                changed=copy.deepcopy(original);entry=changed['chat_audio'][0]['comparison_reports'][0]
-                if change=='tail':entry['last_frame']-=1
-                if change=='scope':entry['source_frames'][0]+=1
-                if change=='raw':entry['evidence']['files'].pop('openai/raw.json')
+                changed=copy.deepcopy(original);part=changed['chat_audio'][0]
+                if change=='tail':part['last_frame']-=1
+                if change=='scope':part['extraction']['first_frame']+=1
+                if change=='raw':part['quality_evidence']['files'].pop('openai/raw.json')
                 if change=='text':changed['text_report']['protected_ids']=[]
                 b.save(directory/'result.json',changed)
                 with self.subTest(change=change),self.assertRaises(b.ShrinkError):s.preflight(directory)
@@ -121,7 +165,7 @@ class ReleaseTests(unittest.TestCase):
 
     def test_ending_resolution_rechecks_two_actual_raw_readings_and_preserves_rejection(self):
         with tempfile.TemporaryDirectory() as temp:
-            directory,result=self.build(Path(temp),FakeBoundaryClient)
+            directory,result=self.build(Path(temp),BoundaryEditedClient,seconds=30)
             entry=result['chat_audio'][0]['comparison_reports'][0]
             self.assertFalse(entry['report']['pass'])
             self.assertEqual(set(entry['boundary_resolution']['report']),{'source','output'})
@@ -129,6 +173,17 @@ class ReleaseTests(unittest.TestCase):
             changed=copy.deepcopy(result)
             changed['chat_audio'][0]['comparison_reports'][0]['boundary_resolution']['reading_evidence']['output']=entry['boundary_resolution']['reading_evidence']['source']
             b.save(directory/'result.json',changed)
+            with self.assertRaises(b.ShrinkError):s.preflight(directory)
+
+    def test_uncut_profile_never_waives_a_real_cut_or_output_uncertainty(self):
+        with tempfile.TemporaryDirectory() as temp:
+            directory,result=self.build(Path(temp),BoundaryEditedClient,seconds=30)
+            result['verification_profile']='uncut-source-preservation';b.save(directory/'result.json',result)
+            with self.assertRaises(b.ShrinkError):s.preflight(directory)
+        with tempfile.TemporaryDirectory() as temp:
+            directory,result=self.build(Path(temp))
+            result['chat_audio'][0]['review']['uncertainties']=['The outgoing sound is garbled.']
+            b.save(directory/'result.json',result)
             with self.assertRaises(b.ShrinkError):s.preflight(directory)
 
 

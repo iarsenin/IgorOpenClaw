@@ -177,6 +177,62 @@ def read_source_cache(parent, url):
     return source,original,navigation,clips,proof
 
 
+def verified_cached_asr(parent,index,original,source):
+    """Read complete actual response evidence, including a previous explicit reuse."""
+    root=Path(parent)/'stages'/f'asr-{index:03d}';attempt_path=root/'attempt.json'
+    if not attempt_path.exists():return None
+    attempt=b.read(attempt_path)
+    if attempt.get('status')!='complete':return None
+    result_path=root/'result.json';value=b.read(result_path)
+    if attempt.get('result_sha256')!=b.sha(result_path) or attempt['binding']['input']!=original:
+        raise b.ShrinkError('Cached transcription result/input evidence changed.')
+    clip=Path(parent)/f'source-{index:03d}.wav'
+    if attempt['binding']['clip']!=b.sha(clip):raise b.ShrinkError('Cached transcription audio changed.')
+    offset=index*b.STEP;frames=min(b.STEP*b.RATE,original['master']['frames']-offset*b.RATE)
+    prove_source_clip(source,clip,offset*b.RATE,frames)
+    reused=root/'cache-reuse.json'
+    if reused.exists():
+        proof=b.read(reused)
+        for file in proof['evidence']:
+            if b.sha(file['path'])!=file['sha256']:raise b.ShrinkError('Earlier cached response evidence changed.')
+        actual_root=Path(proof['actual_provider_stage'])
+    else:actual_root=root
+    if (actual_root/'openai/raw.json').exists():
+        raw=actual_root/'openai/raw.json';receipt=b.read(actual_root/'openai/request-attempt.json')
+        if (receipt.get('status')!='received' or receipt.get('http_status')!=200 or receipt.get('model')!='whisper-1'
+            or receipt.get('raw_sha256')!=b.sha(raw)):raise b.ShrinkError('Cached ASR response receipt is incomplete.')
+        parsed=b.parse_openai_transcript(b.read(raw),attempt['binding']['provider_config']['language'])
+    else:
+        raw=actual_root/'raw.json';parsed=b.parse_gemini_transcript(b.read(raw))
+    if parsed!=value:raise b.ShrinkError('Cached raw transcription no longer matches the complete saved result.')
+    b.flatten(value,offset,frames/b.RATE)
+    evidence=[{'path':str(path.resolve()),'sha256':b.sha(path)} for path in sorted(actual_root.rglob('*.json'))]
+    evidence += [{'path':str(attempt_path.resolve()),'sha256':b.sha(attempt_path)},
+        {'path':str(result_path.resolve()),'sha256':b.sha(result_path)}]
+    return value,clip,{'parent':str(Path(parent).resolve()),'actual_provider_stage':str(actual_root.resolve()),
+        'evidence':evidence,'provider_requests_repeated':False,'original_usage_owned_by_parent':True}
+
+
+def prepare_partial_source_cache(parent,directory,url):
+    parent=Path(parent).resolve();original=b.read(parent/'input.json');source=parent/'original.wav'
+    if original['url']!=url or b.pcm_info(source)!=original['master']:
+        raise b.ShrinkError('Cached complete recording no longer matches this URL/input.')
+    cached={}
+    for index in range(math.ceil(original['master']['seconds']/b.STEP)):
+        value=verified_cached_asr(parent,index,original,source)
+        if value is not None:cached[index]=value
+    if not cached:return {}
+    if (directory/'original.wav').exists() or (directory/'input.json').exists():
+        raise b.ShrinkError('Recovery needs a fresh directory; previous evidence will not be replaced.')
+    b.shutil.copy2(source,directory/'original.wav');b.save(directory/'input.json',original)
+    if b.pcm_info(directory/'original.wav')!=original['master']:raise b.ShrinkError('Cached recording copy changed.')
+    for value,clip,proof in cached.values():b.shutil.copy2(clip,directory/clip.name)
+    b.save(directory/'source-reuse.json',{'kind':'partial-successful-asr-cache-v1','parent':str(parent),
+        'source':str((directory/'original.wav').resolve()),'cached_indices':list(cached),
+        'source_or_editorial_acceptance_inherited':False,'original_usage_owned_by_parent':True})
+    return cached
+
+
 def source_for_job(args,directory,client,binding):
     parent=getattr(args,'reuse_source',None)
     if parent:
@@ -197,6 +253,11 @@ def source_for_job(args,directory,client,binding):
         source,original,words,clips,proof=read_source_cache(selected.parent,args.url)
         b.save(directory/'source-reuse.json',proof);b.save(directory/'input.json',original)
         return source,original,words,clips
+    partial=[]
+    for path in b.state_root().glob('*/input.json'):
+        if path.parent==directory or not (path.parent/'original.wav').exists():continue
+        if b.read(path).get('url')==args.url and any((path.parent/'stages').glob('asr-*/result.json')):partial.append(path)
+    cached=prepare_partial_source_cache(max(partial,key=lambda path:path.stat().st_mtime).parent,directory,args.url) if partial else {}
     original=b.acquire(args.url,directory,getattr(args,'local_audio',None));source=directory/'original.wav'
     if original['master']['seconds'] > 7200:
         raise b.ShrinkError('This release supports recordings up to two hours; no transcription was requested.')
@@ -205,7 +266,18 @@ def source_for_job(args,directory,client,binding):
         frames=min(b.STEP*b.RATE,original['master']['frames']-offset*b.RATE);clip=directory/f'source-{index:03d}.wav'
         if not clip.exists():r.extract_pcm(source,clip,offset*b.RATE,offset*b.RATE+frames)
         prove_source_clip(source,clip,offset*b.RATE,frames)
-        value=b.once(directory,f'asr-{index:03d}',{**binding,'input':original,'clip':b.sha(clip)},lambda root:client.transcribe(root,clip))
+        stage_binding={**binding,'input':original,'clip':b.sha(clip)}
+        if index in cached:
+            result,_,proof=cached[index]
+            stage_binding['cache_evidence']=b.fingerprint(proof)
+            def reuse(root,value=result,proof=proof):
+                b.save(root/'cache-reuse.json',proof)
+                return value
+            value=b.once(directory,f'asr-{index:03d}',stage_binding,reuse)
+        else:value=b.once(directory,f'asr-{index:03d}',stage_binding,lambda root:client.transcribe(root,clip))
+        spans,view=b.character_spans(value)
+        b.save(directory/'stages'/f'asr-{index:03d}'/'character-index-view.json',{'view':view,
+            'derived_character_spans':spans,'raw_result_sha256':b.sha(directory/'stages'/f'asr-{index:03d}'/'result.json')})
         words+=b.flatten(value,offset,frames/b.RATE,len(words));clips.append(clip)
     return source,original,words,clips
 
@@ -263,10 +335,11 @@ def sentence_boundary_hints(source,words,intervals,tempo,output_frames):
     count=math.ceil(b.pcm_info(source)['seconds']/b.STEP)
     for index in range(count):
         result=b.read(Path(source).parent/'stages'/f'asr-{index:03d}'/'result.json')
+        spans,_=b.character_spans(result)
         for local,(left,right) in enumerate(zip(result['words'],result['words'][1:])):
             current=words[word_id+local];following=words[word_id+local+1]
             if current['text']!=left['text'] or following['text']!=right['text']:raise b.ShrinkError('Sentence navigation differs from exact ASR words.')
-            delimiter=result['text'][left['end_index']:right['start_index']]
+            delimiter=result['text'][spans[local][1]:spans[local+1][0]]
             if not re.search(r'[.!?][\"\'”’)]*\s*$',left['text']+delimiter):continue
             if left['text'].rstrip('.,!?').lower() in ('dr','mr','mrs','ms','prof','st','etc'):continue
             gap=following['start']-current['end']
@@ -375,6 +448,21 @@ class EditClient(r.PairClient):
         prompt+='\nIMPORTANT: Every declared removal is PROVISIONAL, not approved. Evaluate the removal itself. Reject even a declared removal if it removes substantive meaning, a question, a necessary example/joke, a negative, quantity, unit, mechanism, qualifier or another physical speaker, or produces an unnatural join. Only an acoustically definite non-semantic false start/filler, redundant restatement whose work survives, or expendable housekeeping is removable. No ASR or expected words are supplied. Uncertainty about any proposed removal requires FAIL.'
         b.save(root/'edit-comparison-contract.json',{'source':source_info,'output':output_info,'prompt':prompt,'system':r.PAIR_SYSTEM,'proposal':proposal})
         return self.audio_routed(root,lambda:self._gemini_pair(root/'gemini',source,output,prompt),lambda:self._openai_pair(root/'openai',source,output,prompt))
+
+    def review_uncut_output(self,root,audio):
+        info=b.pcm_info(audio)
+        prompt=("Review the ENTIRE attached outgoing recording for audible intelligibility and playback quality. "
+            "It is a delivery part of a continuous original recording with gentle pitch-preserving tempo. "
+            "No speech was cut, rewritten, moved or synthesized; the program verifies full source-sample "
+            "preservation separately. Report actual distortion, unnatural speed, clipped/garbled syllables "
+            "or genuinely unintelligible sound. This delivery part may begin or end mid-sentence and may "
+            "contain the original speaker's fillers, repetitions or opinions; those alone are not playback "
+            "defects. Do not invent missing preceding/following words or judge factual claims. "
+            "No transcript, expected words or previous report is supplied. Return the six audit sections "
+            "with checked_ids=[] and protected_ids=[]. Physical metadata: "+str({k:v for k,v in info.items() if k!='sha256'}))
+        b.save(root/'uncut-quality-contract.json',{'profile':'uncut-source-preservation','input':info,'prompt':prompt})
+        return self.audio_routed(root,lambda:self.gemini_generate(root/'gemini',prompt,b.AUDIO_SCHEMA,self.listen,audio),
+            lambda:self.openai_final_audio_review(root/'openai',prompt,audio))
 
 
 def reuse_text_review(parent,prompt,plan,cuts,model,effort):
@@ -530,6 +618,33 @@ def reuse_acoustic_proposals(parent,source,original,words):
     return plan,cuts,payload['retained_intervals'],removed,proof
 
 
+def retain_original_after_edit_rejection(directory,client,binding,source,original,words,reason,evidence):
+    """One conservative recovery: remove no speech, and preserve the rejected edition."""
+    record=directory/'conservative-edit-recovery.json'
+    if record.exists():raise b.ShrinkError('The one conservative recovery is already used; inspect its saved evidence.')
+    old_plan=directory/'edit-plan.json';archive=directory/'edit-plan-before-recovery.json'
+    b.shutil.copy2(old_plan,archive)
+    plan={'cuts':[],'pauses':[],'protected':[{'id':'all-original-words','first_word':0,'last_word':len(words)-1,
+        'reason':'Preserve every original word after a disputed proposed edit.'}],'notes':['Conservative recovery: no speech removals.']}
+    b.save(record,{'reason':reason,'complete_rejected_evidence':evidence,'previous_edit_plan_sha256':b.sha(archive),
+        'source':original,'all_original_words_retained':True,'no_source_word_clock_or_speaker_change':True})
+    prompt=("Independently compare these two COMPLETE texts. There are no removals: all original word IDs, "
+        "words and local speaker labels are retained in the original order. Judge textual preservation only. "
+        "Do not demand corrections of an unchanged ASR word or independent factual truth. Return the requested "
+        "report with checked_ids=[] and protected_ids=['all-original-words']; report any actual textual discrepancy "
+        "or uncertainty honestly. COMPLETE SOURCE: "+json.dumps(semantic_navigation(words),ensure_ascii=False)+
+        "\nCOMPLETE RETAINED: "+json.dumps(semantic_navigation(words),ensure_ascii=False))
+    report=b.once(directory,'text-review-conservative',{**binding,'plan':b.fingerprint(plan),'prompt':b.fingerprint(prompt)},
+        lambda root:client.independent_text_review(root,prompt))
+    b.require_pass(report,[],['all-original-words'])
+    intervals=[[0,original['master']['seconds']]]
+    b.save(old_plan,{'plan':plan,'cuts':[],'retained_intervals':intervals,'source':original,'binding':binding,
+        'conservative_recovery_history':str(record)})
+    rendered=b.once(directory,'render-conservative',{**binding,'intervals':intervals,'recovery':b.sha(record)},
+        lambda root:b.render(source,intervals,root,binding['tempo']))
+    return plan,report,rendered
+
+
 def run_job(args,client_factory=EditClient):
     b.validate_url(args.url)
     if not math.isfinite(args.tempo) or not 1<=args.tempo<=1.15:raise b.ShrinkError('Tempo must be gentle and finite.')
@@ -579,9 +694,17 @@ def run_job(args,client_factory=EditClient):
         b.save(directory/'independent-text-reuse.json',prior_text)
     else:
         text_report=b.once(directory,'text-review',{**binding,'plan':b.fingerprint(plan),'prompt':b.fingerprint(text_prompt)},lambda root:client.independent_text_review(root,text_prompt))
-    b.require_pass(text_report,[c['id'] for c in cuts],[p['id'] for p in plan['protected']])
+    text_stage=directory/'stages/text-review' if not getattr(args,'reuse_text_review',None) else Path(args.reuse_text_review).resolve()/'stages/text-review'
+    recovery_render=None
+    try:b.require_pass(text_report,[c['id'] for c in cuts],[v['id'] for v in plan['protected']])
+    except b.ShrinkError:
+        if not cuts or not (text_report['issues'] or text_report['uncertainties']):raise
+        plan,text_report,recovery_render=retain_original_after_edit_rejection(directory,client,binding,source,original,words,
+            'The proposed text removals were disputed; retain the complete original.',{'text_report':text_report,'original_plan':plan})
+        cuts=[];removed=set();intervals=[[0,original['master']['seconds']]];text_stage=directory/'stages/text-review-conservative'
     if getattr(args,'stop_after',None)=='text':return {'stopped_after':'text','report':text_report,'no_delivery':True}
-    if getattr(args,'reuse_render',None):
+    if recovery_render is not None:rendered=recovery_render
+    elif getattr(args,'reuse_render',None):
         rendered,prior_render=reuse_render(args.reuse_render,source,original,intervals,args.tempo)
         b.save(directory/'render-reuse.json',prior_render)
     else:
@@ -607,7 +730,18 @@ def run_job(args,client_factory=EditClient):
             'source_and_output_own_the_same_eight_second_neighboring_source_passages':True,
             'only_this_declared_original_span_proposed_for_removal':True}
         report=b.once(directory,f'join-review-{index:03d}',{**binding,'proposal':proposal,'source':b.sha(src),'output':b.sha(out)},lambda root:client.review_edit(root,src,out,proposal))
-        b.require_pass(report,[])
+        try:b.require_pass(report,[])
+        except b.ShrinkError:
+            if not (report['issues'] or report['uncertainties']) or recovery_render is not None:raise
+            plan,text_report,rendered=retain_original_after_edit_rejection(directory,client,binding,source,original,words,
+                'A proposed audio cut was disputed; retain the complete original.',{'join_index':index,'join_report':report,
+                    'original_plan':plan,'original_render':rendered})
+            cuts=[];removed=set();intervals=[[0,original['master']['seconds']]]
+            text_stage=directory/'stages/text-review-conservative';recovery_render=rendered
+            final=Path(rendered['audio']).parent/'edited.wav'
+            verify_retained_cut(source,final.parent/'cut.wav',intervals)
+            model=physical_model(intervals)
+            break
     hints=sentence_boundary_hints(source,words,intervals,args.tempo,b.pcm_info(final)['frames'])
     b.save(directory/'delivery-boundary-hints.json',hints)
     parts=b.once(directory,'partition',{**binding,'master':b.sha(final),'boundary_hints':b.fingerprint(hints)},lambda root:r.encode_parts(final,root,r.partition_pcm(final,boundary_hints=hints)))
@@ -615,6 +749,13 @@ def run_job(args,client_factory=EditClient):
     for part_index,part in enumerate(parts):
         actual=Path(part['listening']);info=b.pcm_info(actual)
         if info['sha256']!=part['listening_sha256'] or b.sha(part['path'])!=part['sha256']:raise b.ShrinkError('Outgoing media changed.')
+        if not cuts:
+            report=b.once(directory,f'uncut-output-{part_index:03d}',{**binding,'input':info,'part':part['sha256']},
+                lambda stage:client.review_uncut_output(stage,actual))
+            b.require_pass(report,[])
+            media.append({**part,'review':report,'quality_evidence':stage_proof(directory/'stages'/f'uncut-output-{part_index:03d}'),
+                'comparison_reports':[]})
+            continue
         reports=[];offset=0;window_index=0
         while offset<info['frames']:
             stop=min(info['frames'],offset+240*b.RATE)
@@ -646,10 +787,10 @@ def run_job(args,client_factory=EditClient):
         'automatic_reviews_passed':True,'human_listening_claimed':False,'source_claims_independently_verified':False,
         'editing_profile':'chronological-cuts-and-tempo' if cuts else 'tempo-only-no-semantic-cuts',
         'source_relative_reviews':True,'all_delivery_frames_owned_once':True,'provider':client.provider,
+        'verification_profile':'uncut-source-preservation' if not cuts else 'source-relative-edited-audio',
         'audio_provider':getattr(client,'audio_provider',client.provider),
         'source_path':str(source.resolve()),'text_report':text_report,
-        'text_evidence':stage_proof(directory/'stages/text-review') if not getattr(args,'reuse_text_review',None) else
-            stage_proof(Path(args.reuse_text_review).resolve()/'stages/text-review'),
+        'text_evidence':stage_proof(text_stage),
         'join_evidence':[{'report':b.read(directory/'stages'/f'join-review-{i:03d}'/'result.json'),
             'proof':stage_proof(directory/'stages'/f'join-review-{i:03d}')} for i in range(len(cuts))]}
     b.save(directory/'result.json',result)

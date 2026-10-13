@@ -23,6 +23,10 @@ def wav(path, seconds=3):
 
 
 class ReliableTests(unittest.TestCase):
+    def test_audio_audit_accepts_crlf_without_dropping_any_issue_or_uncertainty(self):
+        lf=AUDIT.replace('[ISSUES]\nNONE','[ISSUES]\nA clipped word.').replace('[UNCERTAINTIES]\nNONE','[UNCERTAINTIES]\nA number is uncertain.')
+        self.assertEqual(r.base.parse_audio_text_report(lf),r.base.parse_audio_text_report(lf.replace('\n','\r\n')))
+        with self.assertRaises(r.base.ShrinkError):r.base.require_pass(r.base.parse_audio_text_report(lf.replace('\n','\r\n')),[])
     def test_audio_provider_is_chosen_before_requests_and_does_not_retry_quality(self):
         with tempfile.TemporaryDirectory() as temp,mock.patch.object(r.base,'load_env'), \
              mock.patch.dict(r.base.os.environ,{'OPENAI_API_KEY':'fake','GOOGLE_API_KEY':'fake',

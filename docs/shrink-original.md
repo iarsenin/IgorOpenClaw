@@ -44,6 +44,10 @@ original download, PCM, ASR, proposed cuts, reports and usage remain private.
    separate complete literal readings of the original and outgoing recordings.
    Both readings must be complete and definite and their ending phrases must
    match. Only an uncut final source passage is eligible; other issues stay held.
+   For an edition with no speech removals, source preservation is verified by
+   the complete retained-sample and frame checks. Each whole outgoing part gets
+   an intelligibility/playback review; it does not require exact word-position
+   matching against an approximately timed source window.
 7. Only reviewed, hash-bound files go to the requesting direct WhatsApp chat.
    Every part is preflighted before the first send. An uncertain delivery receipt
    blocks resending, rather than guessing whether a message was delivered.
@@ -82,6 +86,14 @@ requests except upload cleanup; the explicitly enabled OpenAI route may continue
 Both primary failures and fallback attempts are retained, including unknown usage.
 Structured provider wait advice is recorded as supplied, never invented.
 The worker returns a failure notice and does not publish rejected audio.
+
+Complete transcription responses can be reused from a failed job, including a
+completed prefix. Index conventions such as UTF-8 bytes are accepted only when
+every literal word matches and all compatible conversions yield identical spans.
+The raw response, words, clocks and speaker labels remain unchanged. If a proposed
+text edit or join is disputed, one conservative recovery can retain all original
+speech and use only the gentle tempo change, with fresh checks. See the
+[October 12 customer recovery](shrink-oct12-recovery.md).
 
 The command launcher selects a Python interpreter with `requests` and
 `beautifulsoup4`, using the same resolver as `/sum`. Each launch saves private
@@ -190,8 +202,9 @@ reports and each literal reading remain separately visible in the evidence.
 The OpenAI final listener returns ordinary text in six strictly framed sections
 (coverage, verdict, issues, uncertainties and the two audible boundary phrases).
 Its audio model supports text output and function calling, but does not promise
-Structured Outputs. Parsing preserves each issue/uncertainty block verbatim;
-incomplete coverage, unexpected/missing sections, refusal, truncation or an
+Structured Outputs. Parsing preserves each issue/uncertainty block verbatim and
+accepts CRLF and LF as equivalent transport formatting. Incomplete coverage,
+unexpected/missing sections, refusal, truncation or an
 instruction echoed as speech blocks publication. It neither repairs a malformed
 old JSON tool call nor asks a text-only model to invent acoustic approval.
 Any saved failed request stays held. Passing short tests is not proof that a

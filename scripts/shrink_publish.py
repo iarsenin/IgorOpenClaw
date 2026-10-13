@@ -124,6 +124,9 @@ def preflight_pipeline(directory,result):
         last=min(b.pcm_info(final)['frames'],round((join+8*b.RATE)/result['tempo']))
         p.prove_source_clip(final,out,first,last-first)
     frames=b.pcm_info(final)['frames'];parts=result['chat_audio'];model=p.physical_model(intervals);payloads=[]
+    uncut=result.get('verification_profile')=='uncut-source-preservation'
+    if uncut and (cuts or intervals!=[[0,original['master']['seconds']]]):
+        raise b.ShrinkError('Uncut-source verification cannot approve an edition with speech removals.')
     r.validate_partition([[v['first_frame'],v['last_frame']] for v in parts],frames,600*b.RATE)
     for part in parts:
         audio,listen=Path(part['path']),Path(part['listening'])
@@ -138,6 +141,13 @@ def preflight_pipeline(directory,result):
             decoded=Path(temp)/'actual.wav'
             b.command(['ffmpeg','-v','error','-n','-i',audio,'-ar',b.RATE,'-ac','1','-c:a','pcm_s16le',decoded])
             if b.pcm_info(decoded)!=b.pcm_info(listen):raise b.ShrinkError('The outgoing file is not the reviewed decode.')
+        if uncut:
+            b.require_pass(part['review'],[]);p.verify_raw_report(part['quality_evidence'],part['review'])
+            contract=b.read(Path(part['quality_evidence']['stage'])/'uncut-quality-contract.json')
+            if contract.get('profile')!='uncut-source-preservation' or contract['input']!=b.pcm_info(listen):
+                raise b.ShrinkError('The whole outgoing part was not the reviewed recording.')
+            payloads.append({'part_sha256':part['sha256'],'complete_report':part['review'],'evidence':part['quality_evidence']})
+            continue
         validate_windows(part['comparison_reports'],part['last_frame']-part['first_frame'])
         for entry in part['comparison_reports']:
             src,out=Path(entry['source']),Path(entry['output']);a,z=entry['source_frames']

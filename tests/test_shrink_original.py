@@ -42,6 +42,30 @@ def passed(ids=(), protected=(), audio=False):
 
 
 class OriginalTests(unittest.TestCase):
+    def test_non_ascii_index_units_are_resolved_without_changing_words_clocks_or_raw(self):
+        import copy,unicodedata
+        for text,width in [('Meet Poincaré here.',lambda c:len(c.encode('utf-8'))),
+                           ('Meet Poincaré here.',lambda c:len(unicodedata.normalize('NFD',c))),
+                           ('🙂 Poincaré here.',lambda c:len(c.encode('utf-16-le'))//2)]:
+            words=[];position=0
+            for i,word in enumerate(text.split()):
+                first=text.index(word,position);last=first+len(word);position=last
+                words.append({'text':word,'start_index':sum(width(c) for c in text[:first]),
+                    'end_index':sum(width(c) for c in text[:last]),'start_offset':i,'end_offset':i+.5,'speaker':'same-speaker'})
+            transcript={'text':text,'words':words};before=copy.deepcopy(transcript)
+            flattened=original.flatten(transcript,600,20)
+            self.assertEqual(transcript,before)
+            self.assertEqual([w['text'] for w in flattened],text.split())
+            self.assertEqual([w['start'] for w in flattened],[600+i for i in range(len(words))])
+            self.assertTrue(all(w['speaker_local']=='same-speaker' for w in flattened))
+            self.assertTrue(original.character_spans(transcript)[1]['converted'])
+
+    def test_index_conversion_does_not_guess_a_different_word_or_split_a_code_unit(self):
+        for word,first,last in [('Poincare',0,9),('Poincaré',0,8),('Poincaré',False,9)]:
+            transcript={'text':'Poincaré','words':[{'text':word,'start_index':first,'end_index':last,
+                'start_offset':0,'end_offset':1}]}
+            if word=='Poincaré' and first==0 and last==8:continue
+            with self.assertRaises(original.ShrinkError):original.flatten(transcript,0,10)
     def test_final_listener_is_audio_only_not_transcript_or_prior_verdict(self):
         prompt = original.final_listening_prompt(4, 2400, 600)
         self.assertIn("ENTIRE attached outgoing recording", prompt)

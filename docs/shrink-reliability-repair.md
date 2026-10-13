@@ -1,5 +1,15 @@
 # /shrink reliability repair and release record
 
+## October 12 customer recovery
+
+The customer's 112.96-minute request failed on an accented-word index mismatch.
+That parser defect is repaired, and the original request has now produced a
+104.60-minute uncut, gently sped-up edition delivered in 11 WhatsApp parts. The
+recovery reuses verified transcription responses, retains original speech when
+a cut is disputed, and separates source-sample preservation from approximately
+timed word matching. CRLF report formatting no longer causes rejection.
+See the [complete customer recovery record](shrink-oct12-recovery.md).
+
 ## Ending-check repair — October 10 evening
 
 **Production `/shrink` is active again.** At 01:45 UTC on October 11 (21:45 on
