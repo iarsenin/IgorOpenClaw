@@ -1,4 +1,4 @@
-"""Per-/sum provider routing and private response evidence; no quota retry loop."""
+"""Per-/sum provider routing and private evidence; bounded switch, no retry loop."""
 from contextlib import contextmanager, suppress
 from contextvars import ContextVar
 import json
@@ -11,6 +11,7 @@ import uuid
 import requests
 
 AVAILABILITY = {401, 403, 404, 408, 429, 500, 502, 503, 504}
+GEMINI_OUTPUT_TOKENS = 16384
 ACTIVE = ContextVar("sum_provider_run", default=None)
 
 
@@ -113,20 +114,13 @@ class ProviderRun:
             try:
                 response = self.post("gemini", f"https://generativelanguage.googleapis.com/v1beta/models/{google_model}:generateContent",
                     google_model, headers={"x-goog-api-key": primary_key},
-                    json={"contents": [{"parts": parts}], "generationConfig": {"temperature": temperature}}, timeout=180)
+                    json={"contents": [{"parts": parts}], "generationConfig": {
+                        "temperature": temperature, "maxOutputTokens": GEMINI_OUTPUT_TOKENS}}, timeout=180)
+                result = self.gemini_text(response.json())
             except PrimaryUnavailable:
                 if not self.enabled or not self.openai_key or not text_only:
                     raise
             else:
-                payload = response.json()
-                candidates = payload.get("candidates", [])
-                if not isinstance(candidates, list) or len(candidates) != 1 or not isinstance(candidates[0], dict) or candidates[0].get("finishReason") != "STOP":
-                    self.failed = True
-                    raise ProviderError("Gemini returned an incomplete or blocked result; no fallback will run.")
-                result = "\n".join(p["text"] for p in candidates[0].get("content", {}).get("parts", []) if isinstance(p.get("text"), str) and not p.get("thought")).strip()
-                if not result:
-                    self.failed = True
-                    raise ProviderError("Gemini returned empty text; no fallback will run.")
                 return result
         if not text_only:
             raise PrimaryUnavailable("Use the separate audio-transcription fallback; text requests cannot consume Gemini file references.")
@@ -153,6 +147,44 @@ class ProviderRun:
         if not result:
             self.failed = True
             raise ProviderError("OpenAI returned empty text.")
+        return result
+
+    def gemini_text(self, payload):
+        """Discard truncated output; only token exhaustion permits a switch.
+
+        Raw evidence is already saved by post(). Never pass a Gemini file URI
+        to OpenAI: audio callers catch PrimaryUnavailable and send actual audio.
+        Safety/refusal, unknown and malformed responses remain terminal holds.
+        """
+        candidates = payload.get("candidates", [])
+        feedback = payload.get("promptFeedback", {})
+        valid = (isinstance(feedback, dict) and isinstance(candidates, list)
+                 and len(candidates) == 1 and isinstance(candidates[0], dict))
+        if not valid or feedback.get("blockReason"):
+            self.failed = True
+            raise ProviderError("Gemini returned a blocked or invalid result; no fallback will run.")
+        candidate = candidates[0]
+        ratings = candidate.get("safetyRatings", [])
+        if not isinstance(ratings, list) or any(not isinstance(r, dict) or r.get("blocked") for r in ratings):
+            self.failed = True
+            raise ProviderError("Gemini returned a blocked or invalid result; no fallback will run.")
+        reason = candidate.get("finishReason")
+        if reason == "MAX_TOKENS":
+            self.google_stopped = True
+            self.switch_reason = "Gemini output limit (MAX_TOKENS)"
+            raise PrimaryUnavailable("Gemini reached its output limit; partial text was discarded.")
+        if reason != "STOP":
+            self.failed = True
+            raise ProviderError("Gemini returned an incomplete or blocked result; no fallback will run.")
+        content = candidate.get("content", {})
+        parts = content.get("parts") if isinstance(content, dict) else None
+        if not isinstance(parts, list) or any(not isinstance(p, dict) for p in parts):
+            self.failed = True
+            raise ProviderError("Gemini returned invalid text content; no fallback will run.")
+        result = "\n".join(p["text"] for p in parts if isinstance(p.get("text"), str) and not p.get("thought")).strip()
+        if not result:
+            self.failed = True
+            raise ProviderError("Gemini returned empty text; no fallback will run.")
         return result
 
     def cleanup(self):

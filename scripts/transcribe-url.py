@@ -25,6 +25,7 @@ import hashlib
 import html
 import importlib.util
 import json
+import math
 import mimetypes
 import os
 import re
@@ -32,6 +33,7 @@ import shutil
 import smtplib
 import subprocess
 import sys
+import tempfile
 import textwrap
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
@@ -62,6 +64,8 @@ GEMINI_MODEL = "gemini-2.5-flash-lite"
 SUMMARY_CHUNK_CHARS = 70000
 TRANSCRIPT_INLINE_MAX = 120000
 TRANSCRIBE_CHUNK_BYTES = 20 * 1024 * 1024
+OPENAI_CHUNK_SECONDS = 180
+OPENAI_OUTPUT_TOKEN_LIMIT = 2000
 
 MEDIA_EXTENSIONS = {
     ".aac",
@@ -1659,7 +1663,53 @@ def transcribe_with_gemini(audio_path: Path, state: RunState, api_key: str) -> s
     )
 
 
+def audio_duration(audio_path: Path) -> float:
+    if not command_exists("ffprobe"):
+        raise provider.ProviderError("Audio inspection needs FFmpeg/ffprobe; no partial transcript was accepted.")
+    proc = sh(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "json", str(audio_path)])
+    try:
+        duration = float(json.loads(proc.stdout)["format"]["duration"])
+    except (ValueError, KeyError, TypeError):
+        duration = 0
+    if proc.returncode or not math.isfinite(duration) or duration <= 0:
+        raise provider.ProviderError("Could not inspect the recording duration; no partial transcript was accepted.")
+    return duration
+
+
+def openai_transcription_inputs(audio_path: Path) -> list[Path]:
+    duration = audio_duration(audio_path)
+    if duration <= OPENAI_CHUNK_SECONDS and audio_path.stat().st_size <= TRANSCRIBE_CHUNK_BYTES:
+        return [audio_path]
+    if not command_exists("ffmpeg"):
+        raise provider.ProviderError("Long-audio transcription needs FFmpeg; no partial transcript was accepted.")
+    # Fresh per-call scratch avoids stale chunks; retain it with the original
+    # recording until normal transcript scratch cleanup. No model-call retry.
+    root = Path(tempfile.mkdtemp(prefix="openai-chunks-", dir=audio_path.parent))
+    chunks = ffmpeg_segment_audio(audio_path, root, segment_seconds=OPENAI_CHUNK_SECONDS)
+    if not chunks:
+        raise provider.ProviderError("Could not split the recording for transcription.")
+    durations = [audio_duration(chunk) for chunk in chunks]
+    if (any(d > OPENAI_CHUNK_SECONDS + 0.5 for d in durations)
+            or any(p.stat().st_size > TRANSCRIBE_CHUNK_BYTES for p in chunks)
+            or abs(sum(durations) - duration) > max(0.5, len(chunks) * 0.1)):
+        raise provider.ProviderError("Transcription chunks do not cover the complete recording safely.")
+    return chunks
+
+
 def transcribe_with_openai(audio_path: Path, api_key: str) -> str:
+    run = provider.current()
+    try:
+        chunks = openai_transcription_inputs(audio_path)
+        # Commit the transcript only after every actual chunk returns valid
+        # text. A failure stops peers, preserves response evidence and never
+        # returns the successful prefix as a supposedly complete transcript.
+        return "\n\n".join(transcribe_openai_chunk(chunk, api_key) for chunk in chunks)
+    except provider.ProviderError:
+        run.failed = True
+        raise
+
+
+def transcribe_openai_chunk(audio_path: Path, api_key: str) -> str:
     with audio_path.open("rb") as fh:
         resp = provider.current().post(
             "openai", "https://api.openai.com/v1/audio/transcriptions", "gpt-4o-mini-transcribe",
@@ -1669,10 +1719,12 @@ def transcribe_with_openai(audio_path: Path, api_key: str) -> str:
             timeout=180,
         )
     data = resp.json()
-    if isinstance(data, dict) and data.get("text"):
+    usage = data.get("usage") or {}
+    output_tokens = usage.get("output_tokens") if isinstance(usage, dict) else None
+    if isinstance(output_tokens, (int, float)) and output_tokens >= OPENAI_OUTPUT_TOKEN_LIMIT:
+        raise provider.ProviderError("OpenAI transcription reached its output limit; partial text was discarded.")
+    if isinstance(data.get("text"), str) and data["text"].strip():
         return data["text"].strip()
-    if isinstance(data, str):
-        return data.strip()
     raise provider.ProviderError("Unexpected OpenAI transcription response")
 
 

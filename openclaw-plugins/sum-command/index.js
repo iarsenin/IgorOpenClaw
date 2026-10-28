@@ -228,6 +228,11 @@ function buildReply(result) {
     return `${summary}\n\nI couldn't get a full transcript, so I didn't send an email.`;
 }
 
+function buildErrorReply() {
+    // Full helper stderr belongs in the private server log, not WhatsApp.
+    return "I couldn't finish the transcript. The error has been logged.";
+}
+
 function resolvePythonCommand(env) {
     const candidates = [
         env.PYTHON3_PATH,
@@ -399,7 +404,7 @@ export default definePluginEntry({
                 api.logger.error?.(`sum-command before_dispatch failed for ${url}: ${message}`);
                 return {
                     handled: true,
-                    text: `I couldn't finish the transcript run.\n\n${message}`
+                    text: buildErrorReply()
                 };
             }
         });
@@ -425,7 +430,7 @@ export default definePluginEntry({
                 } catch (error) {
                     const message = error instanceof Error ? error.message : String(error);
                     api.logger.error?.(`sum-command failed for ${url}: ${message}`);
-                    return { text: `I couldn't finish the transcript run.\n\n${message}` };
+                    return { text: buildErrorReply() };
                 }
             },
         });
@@ -433,6 +438,7 @@ export default definePluginEntry({
 });
 
 export {
+    buildErrorReply,
     parseDotEnv,
     resolvePythonCommand,
     extractSumUrl,

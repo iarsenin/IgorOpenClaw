@@ -2,7 +2,13 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
 
-import plugin, { extractSumUrl, parseHelperJsonOutput, runHelper, shouldRetryHelper } from "./index.js";
+import plugin, { buildErrorReply, extractSumUrl, parseHelperJsonOutput, runHelper, shouldRetryHelper } from "./index.js";
+
+test("/sum failures use a short error status, never helper traceback or secrets", () => {
+    const reply = buildErrorReply(new Error("Traceback /Users/private/server.py secret-key"));
+    assert.equal(reply, "I couldn't finish the transcript. The error has been logged.");
+    assert.doesNotMatch(reply, /Traceback|\/Users|secret-key/);
+});
 
 function makeChild({ stdout = "", stderr = "", code = 0 }) {
     const child = new EventEmitter();
