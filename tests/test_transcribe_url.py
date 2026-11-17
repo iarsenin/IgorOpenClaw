@@ -1,4 +1,5 @@
 import importlib.util
+import json
 import sys
 import tempfile
 import unittest
@@ -41,7 +42,7 @@ class TranscribeUrlTests(unittest.TestCase):
         module = load_module()
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp); (root/"yt_dlp").mkdir(); (root/"yt_dlp/__init__.py").touch()
-            with mock.patch.dict(module.os.environ,{"SHRINK_YTDLP_MODULE_DIR":temp}), \
+            with mock.patch.dict(module.os.environ,{"SUM_YTDLP_MODULE_DIR":temp}), \
                  mock.patch.object(module,"command_exists",side_effect=AssertionError("No global lookup")):
                 args = module.yt_dlp_command()
                 self.assertEqual(args[0],sys.executable)
@@ -49,13 +50,13 @@ class TranscribeUrlTests(unittest.TestCase):
 
     def test_missing_explicit_downloader_does_not_silently_use_old_global_version(self):
         module = load_module()
-        with mock.patch.dict(module.os.environ,{"SHRINK_YTDLP_MODULE_DIR":"/does/not/exist"}), \
+        with mock.patch.dict(module.os.environ,{"SUM_YTDLP_MODULE_DIR":"/does/not/exist"}), \
              mock.patch.object(module,"command_exists",return_value=True):
             self.assertIsNone(module.yt_dlp_command())
 
     def test_default_downloader_keeps_existing_behavior(self):
         module = load_module()
-        with mock.patch.dict(module.os.environ,{"SHRINK_YTDLP_MODULE_DIR":""}), \
+        with mock.patch.dict(module.os.environ,{"SUM_YTDLP_MODULE_DIR":""}), \
              mock.patch.object(module,"command_exists",return_value=True):
             self.assertEqual(module.yt_dlp_command(),["yt-dlp"])
 
@@ -65,15 +66,15 @@ class TranscribeUrlTests(unittest.TestCase):
 
         def fake_gemini_generate(contents, **kwargs):
             captured["prompt"] = contents[0]["text"]
-            return """{
+            return json.loads("""{
               "email_subject": "AI compute bottlenecks",
               "whatsapp_summary": "AI compute bottlenecks\\n- Scaling is constrained by power, memory, and fabs.",
               "detailed_summary": "- Main takeaway: AI compute is bottlenecked by physical infrastructure, not just GPU demand.",
               "who": "Unknown",
               "transcript_possible": true
-            }"""
+            }""")
 
-        with mock.patch.object(module, "gemini_generate", side_effect=fake_gemini_generate):
+        with mock.patch.object(module, "generate_summary", side_effect=fake_gemini_generate):
             result = module.summarize_text_for_email(
                 transcript_text="Example transcript text.",
                 source_text="",

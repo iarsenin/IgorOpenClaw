@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
 
-import plugin, { buildErrorReply, extractSumUrl, parseHelperJsonOutput, runHelper, shouldRetryHelper } from "./index.js";
+import plugin, { buildErrorReply, buildReply, extractSumUrl, parseHelperJsonOutput, runHelper, shouldRetryHelper } from "./index.js";
 
 test("/sum failures use a short error status, never helper traceback or secrets", () => {
     const reply = buildErrorReply(new Error("Traceback /Users/private/server.py secret-key"));
@@ -68,9 +68,11 @@ test("plugin registers /sum command and before_dispatch gate", async () => {
     });
     assert.deepEqual(await hook({ body: "/transcribe https://example.com", isGroup: false }), {
         handled: true,
-        text: "Use /sum <URL> for a transcript and summary, or /shrink <URL> for a shorter audio edition.",
+        text: "Use /sum <URL> for a transcript and summary.",
     });
-    assert.equal(await hook({ body: "/shrink https://example.com", isGroup: false }), undefined);
+    assert.deepEqual(await hook({ body: "/shrink https://example.com", isGroup: false }), {
+        handled: true, text: "Use /sum <URL> for a transcript and summary.",
+    });
 });
 
 test("shouldRetryHelper returns true for empty stdout parse failures", () => {
@@ -124,4 +126,35 @@ test("runHelper passes SUM_EMAIL_TO to the Python helper", async () => {
     assert.deepEqual(result, { status: "ok" });
     assert.ok(helperArgs);
     assert.equal(helperArgs[helperArgs.indexOf("--email-to") + 1], "summaries@example.com");
+});
+
+test("summary and email statuses stay distinct and never invent an email success", () => {
+    assert.match(buildReply({ whatsapp_summary: "Real summary", transcript_available: true, email_sent: true }), /Real summary\n\nFull transcript emailed/);
+    assert.match(buildReply({ whatsapp_summary: "Real summary", transcript_available: true, email_sent: false }), /Real summary\n\nI got the transcript, but the email send failed/);
+    assert.match(buildReply({ whatsapp_summary: "No transcript", transcript_available: false, email_sent: false }), /didn't send an email/);
+});
+
+test("provider/helper failures never retry the pipeline", async () => {
+    let calls = 0;
+    await assert.rejects(runHelper("https://example.com", {
+        pythonCommand: "python3", env: {}, setTimeoutImpl: () => 0, clearTimeoutImpl() {},
+        spawnImpl: () => { calls++; return makeChild({ stderr: "Private provider failure", code: 1 }); },
+    }), /Private provider failure/);
+    assert.equal(calls, 1);
+});
+
+test("timeout stops the helper and does not restart or claim success", async () => {
+    let calls = 0, killed = false;
+    await assert.rejects(runHelper("https://example.com", {
+        pythonCommand: "python3", env: {}, clearTimeoutImpl() {},
+        setTimeoutImpl: callback => { queueMicrotask(callback); return 0; },
+        spawnImpl: () => {
+            calls++;
+            const child = new EventEmitter(); child.stdout = new EventEmitter(); child.stderr = new EventEmitter();
+            child.kill = signal => { assert.equal(signal, "SIGTERM"); killed = true; child.emit("close", 1); };
+            return child;
+        },
+    }), /timed out/);
+    assert.equal(calls, 1);
+    assert.equal(killed, true);
 });

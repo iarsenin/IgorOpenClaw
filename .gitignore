@@ -40,3 +40,7 @@ workspace/auth-profiles.json
 workspace/.tmp-*
 workspace/email-*.txt
 workspace/.scratch/
+
+# Private archived recordings and model evidence; not active features.
+output/shrink/
+.runtime/

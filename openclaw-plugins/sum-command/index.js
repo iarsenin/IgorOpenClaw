@@ -347,15 +347,11 @@ export default definePluginEntry({
     description: "Deterministic /sum command that runs the repo transcript helper directly.",
     register(api) {
         api.on("before_dispatch", async (event) => {
-            // Let the independent shrink plugin queue long audio jobs.
-            if (typeof event.body === "string" && /^\s*\/shrink(?:\s|$)/iu.test(event.body)) {
-                return undefined;
-            }
             const url = extractSumUrl(event.body);
             if (url === null) {
                 return {
                     handled: true,
-                    text: `Use ${USAGE} for a transcript and summary, or /shrink <URL> for a shorter audio edition.`
+                    text: `Use ${USAGE} for a transcript and summary.`
                 };
             }
             api.logger.info?.(`sum-command intercepting before_dispatch for ${url || "<missing-url>"}`);
@@ -439,6 +435,7 @@ export default definePluginEntry({
 
 export {
     buildErrorReply,
+    buildReply,
     parseDotEnv,
     resolvePythonCommand,
     extractSumUrl,

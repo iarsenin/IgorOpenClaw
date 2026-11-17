@@ -66,6 +66,19 @@ TRANSCRIPT_INLINE_MAX = 120000
 TRANSCRIBE_CHUNK_BYTES = 20 * 1024 * 1024
 OPENAI_CHUNK_SECONDS = 180
 OPENAI_OUTPUT_TOKEN_LIMIT = 2000
+CHUNK_SUMMARY_SCHEMA = {
+    "type": "object", "additionalProperties": False,
+    "properties": {"chunk_summary": {"type": "string"}, "who": {"type": "string"},
+                   "important_topics": {"type": "array", "items": {"type": "string"}}},
+    "required": ["chunk_summary", "who", "important_topics"],
+}
+SUMMARY_SCHEMA = {
+    "type": "object", "additionalProperties": False,
+    "properties": {"email_subject": {"type": "string"}, "whatsapp_summary": {"type": "string"},
+                   "detailed_summary": {"type": "string"}, "who": {"type": "string"},
+                   "transcript_possible": {"type": "boolean"}},
+    "required": ["email_subject", "whatsapp_summary", "detailed_summary", "who", "transcript_possible"],
+}
 
 MEDIA_EXTENSIONS = {
     ".aac",
@@ -1431,7 +1444,7 @@ def parse_rss_feed(feed_url: str, url_hint: str | None, title_hint: str | None) 
 
 def yt_dlp_command() -> list[str] | None:
     """Allow a tested, isolated downloader without changing global packages."""
-    configured = os.getenv("SHRINK_YTDLP_MODULE_DIR", "").strip()
+    configured = os.getenv("SUM_YTDLP_MODULE_DIR", "").strip()
     if configured:
         root = Path(configured).expanduser().resolve()
         if not (root / "yt_dlp/__init__.py").is_file():
@@ -1638,6 +1651,10 @@ def gemini_generate(parts: list[dict], *, api_key: str, temperature: float = 0.1
     return provider.current().text(parts, api_key, GEMINI_MODEL, temperature)
 
 
+def generate_summary(parts: list[dict], *, api_key: str, schema: dict) -> dict:
+    return provider.current().summary(parts, api_key, GEMINI_MODEL, 0.1, schema)
+
+
 def transcribe_with_gemini(audio_path: Path, state: RunState, api_key: str) -> str:
     file_uri, mime_type = upload_file_to_gemini(audio_path, api_key)
     prompt = textwrap.dedent(
@@ -1810,17 +1827,20 @@ def summarize_text_for_email(
 
                 Rules:
                 - chunk_summary should be 4 to 8 plain text bullets separated by newlines.
+                - important_topics must be an array of nonempty strings; who must be a nonempty string.
                 - Focus on concrete claims, decisions, numbers, examples, and implications.
+                - Preserve uncertainty, attribution, quantities, negatives, and qualifications.
+                - A name merely mentioned in ASR is not verified speaker identity. Without explicit speaker labels or identifying author metadata, use Unknown for who and neutral speaker wording.
                 - Do not use teaser wording like "they discuss", "they explore", or "the speaker talks about".
                 - Prefer direct bullets such as "Main takeaway:", "Why it matters:", "Key evidence:", or "Watch for:" when helpful.
                 """
             ).strip()
-            result = gemini_generate(
+            result = generate_summary(
                 [{"text": f"{prompt}\n\nTranscript chunk:\n{chunk}"}],
                 api_key=api_key,
-                temperature=0.1,
+                schema=CHUNK_SUMMARY_SCHEMA,
             )
-            chunk_summaries.append(extract_json_object(result))
+            chunk_summaries.append(result)
         synthesis_input = json.dumps(chunk_summaries, ensure_ascii=False)
         prompt_body = f"Chunk summaries:\n{synthesis_input}"
     else:
@@ -1864,35 +1884,11 @@ def summarize_text_for_email(
         - Why it matters: labs can grow demand faster than the semiconductor and energy supply chains can expand.
         """
     ).strip()
-    result = gemini_generate([{"text": f"{prompt}\n\n{prompt_body}"}], api_key=api_key, temperature=0.1)
-    try:
-        return extract_json_object(result)
-    except Exception:
-        repair_prompt = textwrap.dedent(
-            """
-            Convert the following response into valid JSON only.
-
-            Required keys:
-            - email_subject
-            - whatsapp_summary
-            - detailed_summary
-            - who
-            - transcript_possible
-            """
-        ).strip()
-        try:
-            repaired = gemini_generate(
-                [{"text": f"{repair_prompt}\n\nResponse to repair:\n{result}"}],
-                api_key=api_key,
-                temperature=0.0,
-            )
-            return extract_json_object(repaired)
-        except Exception:
-            return build_fallback_summary(
-                transcript_text=transcript_text,
-                source_text=source_text,
-                metadata=metadata,
-            )
+    summary = generate_summary([{"text": f"{prompt}\n\n{prompt_body}"}], api_key=api_key, schema=SUMMARY_SCHEMA)
+    # This is known pipeline metadata, not a model judgment. Synthesis sees
+    # chunk summaries and may wrongly infer that no full transcript exists.
+    summary["transcript_possible"] = bool(transcript_text and transcript_text.strip())
+    return summary
 
 
 def rewrite_whatsapp_summary(

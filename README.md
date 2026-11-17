@@ -1,372 +1,100 @@
 # IgorOpenClaw
 
-> **Provider update — October 10, 2026:** Both `/sum` and original-voice `/shrink` support Gemini-to-OpenAI fallback. `/sum` includes GPT summaries, not just transcription. The Gemini fidelity critic is explicitly `gemini-3.6-flash`; private evidence and strict `/shrink` listening holds remain intact. See [provider validation](docs/shrink-openai-validation.md). Do not run the historical broad setup/reset instructions to deploy this update.
+A private WhatsApp service for one command:
 
-> **Current audio workflow — October 9, 2026:** `/shrink` edits the original recording and preserves its voices; `/sum` remains the transcript/summary/email command. See [the current guide](docs/shrink-original.md) and [deployment validation](docs/shrink-original-deployment.md). Earlier synthetic-voice and broad setup instructions describe historical work; do not use them to reset the current deployment.
-
-> **STATUS: ACTIVE (restored 2026-04-18, lean-cron mode as of 2026-05-14).** Gateway, LaunchAgents, and the local `/transcribe` plugin are running. Only 3 cron jobs are currently enabled (`post-restart-resume`, `api-spend-check`, `morning-briefing`); the rest are defined but disabled in `config/cron/jobs.json` to save tokens.
-> Keep `config/`, `workspace/`, and `scripts/` as the source of truth, then re-run `bash scripts/setup.sh` after runtime repairs or upgrades.
-
-Version-controlled configuration and workspace for an always-on [OpenClaw](https://github.com/openclaw/openclaw) autonomous AI agent running on a Mac Mini M2.
-
-## Purpose
-
-This repository is the single source of truth for an OpenClaw agent that:
-
-- Runs 24/7 as a macOS LaunchAgent daemon
-- Accepts instructions via WhatsApp and executes tasks autonomously
-- Uses **OpenAI** (primary) and **Google Gemini** (fallback) as LLM providers
-- Automates browser interactions, email, iMessage/SMS, phone calls (Vapi AI), file management, and coding workflows
-- Handles `/transcribe <URL>` requests with a deterministic OpenClaw plugin command backed by `scripts/transcribe-url.py`, canonical feed/provider transcript discovery, speaker-label cleanup, fallback transcription, the same full bullet summary on WhatsApp and email, and email delivery when a full transcript exists
-- Integrates with Cursor IDE for autonomous coding and research
-
-The agent acts on its owner's behalf — browsing the web, managing email, running shell commands, and orchestrating multi-step workflows — while requiring explicit approval before irreversible actions. When it needs a decision or missing info from the owner, it **prefers yes/no or multiple-choice questions** when practical (see `workspace/AGENTS.md`).
-
-## Architecture
-
-```
-┌─────────────┐     WhatsApp      ┌──────────────────┐
-│  Phone /    │◄──────────────────►│  OpenClaw Gateway │
-│  Any Device │                    │  (localhost:18789) │
-└─────────────┘                    └────────┬─────────┘
-                                            │
-                          ┌─────────────────┼─────────────────┐
-                          ▼                 ▼                 ▼
-                    ┌──────────┐    ┌──────────────┐   ┌──────────┐
-                    │  OpenAI  │    │ Google Gemini │   │  Skills  │
-                    │   API    │    │     API       │   │ (browser,│
-                    └──────────┘    └──────────────┘   │  email,  │
-                                                       │  cursor) │
-                    ┌──────────┐                       └──────────┘
-                    │ Vapi AI  │ ← Phone calls
-                    │(+1 917-  │   (outbound + inbound)
-                    │ 962-8631)│
-                    └──────────┘
+```text
+/sum https://example.com/episode
 ```
 
-- **Mac Mini M2** (8 GB RAM, Apple Silicon) — runs the agent natively
-- **OpenClaw Gateway** — always-on daemon managed by launchd
-- **LLMs via API** — no local models (hardware too constrained); OpenAI as primary, Gemini as fallback
-- **Vapi AI** — outbound and inbound phone calls via AI voice agent "Riley" (+19179628631)
-- **Skills (17 ready)** — browser automation, Gmail/Calendar/Drive (gog OAuth),
-  email triage (himalaya IMAP), Apple Reminders, GitHub, coding-agent, and more
+It resolves the URL, prefers an existing full transcript, otherwise downloads
+and transcribes audio, creates a summary, replies in WhatsApp, and emails the
+summary and full transcript. English and Russian source text are retained in
+their original language. ASR and summaries can be wrong; this is not independent
+fact checking or a guarantee of speaker identity.
 
-## Repository Layout
+The audio-editing command was retired on November 17, 2026. It is no longer
+registered, installed by setup, or served by a background worker. Unknown and
+retired commands receive `/sum` usage. Historical recordings, jobs, reports, and
+private model evidence are preserved, not runnable product features.
 
-```
-IgorOpenClaw/
-├── README.md              ← You are here
-├── SETUP_GUIDE.md         ← Full installation walkthrough (paste into Gemini for guided help)
-├── .cursorrules           ← Instructions for Cursor AI agents editing this repo
-├── .env.example           ← Template for secrets (copy to .env, never commit .env)
-├── .gitignore
-├── config/
-│   ├── openclaw.json.template ← Config template (token injected from .env by setup.sh)
-│   ├── riley-voice-behavior.md ← Vapi assistant voicemail + callback policy (merge into Riley prompt)
-│   └── cron/
-│       └── jobs.json      ← Scheduled task definitions
-├── workspace/             ← OpenClaw agent workspace files (symlinked to ~/.openclaw/workspace/)
-│   ├── AGENTS.md          ← Operational rules, task routing, delegation, question style (y/n, multiple choice)
-│   ├── SOUL.md            ← Agent personality and communication style
-│   ├── USER.md            ← User context (timezone, preferences, accounts)
-│   ├── TOOLS.md           ← Available tools and environment notes
-│   ├── MEMORY.template.md ← Tracked template for local runtime memory file
-│   ├── MEMORY.md          ← Local-only runtime state (git-ignored)
-│   └── HEARTBEAT.md       ← Proactive behavior guidelines (references repo cron template)
-└── scripts/
-    ├── setup.sh           ← Bootstrap: copy config, symlink workspace, seed live cron store, daemon install
-    ├── uninstall.sh       ← Teardown (remove workspace link/live cron store, stop daemon, remove LaunchAgent)
-    ├── contacts.py        ← Apple Contacts lookup (searches all synced sources)
-    ├── email-search.py    ← Email search wrapper (standard flags, searches both Gmail+Yahoo)
-    ├── imessage.py        ← iMessage/SMS read & send helper (chat.db + AppleScript)
-    ├── whatsapp.py        ← WhatsApp bridge message reader (parses gateway logs)
-    ├── vapi-call.py       ← Outbound/inbound phone calls via Vapi AI voice agent
-    │                        (outbound dial auto-spawns detached watcher that WhatsApps
-    │                        a call summary to owner within ~30s of call end)
-    ├── api-spend-check.py ← Daily API spend report (OpenAI, Vapi, Cursor status)
-    ├── system-health-check.py ← Gateway/disk/error health check (silent when healthy)
-    ├── transcribe-url.py  ← URL transcript + summary + email pipeline
-    └── daily-restart.sh   ← Daily gateway restart via launchd (4 AM ET)
+## Reliability
 
-openclaw-plugins/
-└── transcribe-command/
-    ├── package.json       ← Declares the OpenClaw extension entrypoint
-    ├── openclaw.plugin.json ← Optional metadata for plugin inspection/listing
-    └── index.js           ← Deterministic `/transcribe` OpenClaw command plugin
-```
+Gemini is the default provider. OpenAI provides the configured fallback for
+eligible primary failures and invalid completed summary JSON. Both chunk and
+final summaries use structured output plus local field/type validation. One
+provider switch is allowed; invalid output is discarded rather than repaired
+or used as source. Safety blocks, unknown failures, and a failed fallback stop
+the request. Full private responses and usage are saved before parsing.
 
-## Slash Commands: Plugin vs Skill
+Compressed audio is split by duration as well as size for OpenAI transcription.
+Every chunk, including the final tail, must complete before the transcript is
+used. Speaker tagging cannot change the original spoken-word sequence.
+Short errors go to WhatsApp; detailed tracebacks stay in server logs. No transcript
+means no transcript email. Failed email delivery is reported separately.
 
-For this repo, a live slash command such as `/transcribe <URL>` should be implemented as an
-**OpenClaw plugin**, not as a skill-only workflow.
+## Components
 
-Why:
-- **Skills** are prompt/runtime guidance for the agent after a message has already reached model dispatch.
-- A skill can help the agent reason about a transcript request, but it does **not** guarantee that a WhatsApp slash command will be intercepted deterministically.
-- For hard command behavior, the gateway needs a **plugin hook** that runs before model dispatch.
-
-What works for WhatsApp:
-- Put the command in `openclaw-plugins/<plugin-name>/`
-- Include `package.json` with an `openclaw.extensions` entry pointing to `index.js`
-- Keep `openclaw.plugin.json` for plugin metadata / inspection
-- In `index.js`, export a plugin and use `api.on("before_dispatch", ...)`
-- Match the wrapped inbound body format used by WhatsApp, not just a bare `/command ...`
-- Return `{ handled: true, text: "..." }` to stop model dispatch and send the final reply directly
-- Optionally also call `api.registerCommand(...)` for non-WhatsApp surfaces, but do **not** rely on `registerCommand()` alone for the WhatsApp path
-
-What to avoid:
-- Do **not** assume that adding a skill is enough for a live slash command
-- Do **not** assume `api.registerCommand()` alone will catch WhatsApp `/...` messages
-- Do **not** let a user-facing slash command depend on the model deciding whether to run shell steps
-
-The `/transcribe` implementation in this repo is the reference pattern.
-
-## Quick Start
-
-```bash
-# 1. Clone and enter the repo
-git clone <this-repo-url>
-cd IgorOpenClaw
-
-# 2. Create your secrets file
-cp .env.example .env
-chmod 600 .env
-# Edit .env with your real API keys
-
-# 3. Install OpenClaw (requires Node.js 22+, Node 24 via Homebrew recommended)
-npm install -g openclaw@latest
-
-# 4. Run the setup script (generates ~/.openclaw/openclaw.json, symlinks workspace, seeds live cron store, installs daemon)
-bash scripts/setup.sh
-
-# 5. Verify
-openclaw gateway status
-```
-
-For the full step-by-step walkthrough, see [SETUP_GUIDE.md](SETUP_GUIDE.md).
+- `openclaw-plugins/sum-command/`: deterministic direct-chat command and reply.
+- `scripts/transcribe-url.py`: URL, transcript, summary, and email pipeline.
+- `scripts/sum_provider.py`: per-run routing, structured data checks, raw evidence.
+- `config/openclaw.json.template`: fresh-install gateway configuration.
+- `workspace/AGENTS.md`: narrow runtime behavior.
+- `scripts/daily-restart.sh`: existing scheduled gateway restart.
+- `tests/`: offline provider, audio-chunk, summary, command, and email regressions.
 
 ## Configuration
 
-Configuration lives in `config/openclaw.json.template`. The auth token uses a `__OPENCLAW_AUTH_TOKEN__` placeholder — `scripts/setup.sh` copies the template to `~/.openclaw/openclaw.json` and injects the real token from `.env`.
+Copy `.env.example` to `.env`, set the provider/SMTP values, and restrict it to
+mode 600. Never commit or print credentials. Relevant settings:
 
-Current repo default models:
-- Primary: `openai/gpt-5.4-mini`
-- Fallback: `google/gemini-2.5-pro`
-- DM session scope: `per-account-channel-peer` (isolates WhatsApp DMs per sender/account)
+| Setting | Purpose |
+| --- | --- |
+| `GOOGLE_API_KEY` / `GEMINI_API_KEY` | Gemini provider credential. |
+| `OPENAI_API_KEY` | OpenAI transcription and summary fallback. |
+| `SUM_PROVIDER` | `gemini` (default) or explicit `openai`. |
+| `SUM_OPENAI_FALLBACK` | `1` by default; `0` disables implicit fallback. |
+| `SUM_OPENAI_TEXT_MODEL` | Existing text model, default `gpt-6-luna`. |
+| `SUM_YTDLP_MODULE_DIR` | Optional tested isolated downloader package directory. |
+| `SUM_EMAIL_TO` | Transcript destination; legacy `TRANSCRIBE_EMAIL_TO` also works. |
+| `GMAIL_USER`, `GMAIL_APP_PASSWORD` | SMTP credentials for sending the package. |
 
-`setup.sh` also injects all API keys and environment variables from `.env` into the LaunchAgent plist so they are available to the gateway process and cron scripts. This is critical — running `openclaw doctor --fix` will reinstall the plist and wipe these injected variables. Always re-run `bash scripts/setup.sh` after `doctor --fix`.
+Runtime prerequisites are Node 22+, OpenClaw, Python with `requirements.txt`,
+FFmpeg/ffprobe, and yt-dlp for sources requiring download. A working provider key
+and SMTP configuration are required for their respective stages. API usage is
+not free; saved per-call usage is not itself an invoice or fixed job price.
 
-After editing the template or `.env`, re-run setup:
+`scripts/setup.sh` is a fresh-install tool that replaces generated configuration
+and runtime workspace files. Do not rerun it to deploy a small update to an
+existing server. Use a reviewed, targeted change and an idle gateway restart.
+`scripts/uninstall.sh` removes the service; it is not a troubleshooting command.
 
-```bash
-bash scripts/setup.sh    # re-injects config, env vars, and restarts gateway
-```
+## Private runtime state
 
-Agent workspace files (`workspace/*.md`) take effect on the next agent turn without a restart.
+Transcript scratch: `~/.openclaw/state/transcripts/`.
+Provider evidence: `~/.openclaw/state/sum-provider-evidence/` (or
+`SUM_PROVIDER_EVIDENCE_DIR`). Successful emailed runs remove their own scratch,
+not their provider receipts. Historical `output/` evidence is private and ignored
+by Git. Retiring audio editing does not erase past recordings or customer results.
 
-`workspace/MEMORY.md` is intentionally local-only (git-ignored) because it contains fast-changing operational state and personal context. The repository tracks `workspace/MEMORY.template.md`; `scripts/setup.sh` initializes `workspace/MEMORY.md` from that template when missing.
-
-## Upgrading OpenClaw
-
-For this repo, the safest upgrade path is:
-
-```bash
-brew install node@24
-export PATH="/opt/homebrew/opt/node@24/bin:/opt/homebrew/bin:$PATH"
-
-openclaw update || npm install -g openclaw@latest
-bash scripts/setup.sh
-```
-
-Why `setup.sh` matters after an upgrade:
-
-- `openclaw gateway install` and `openclaw doctor --fix` can rewrite the LaunchAgent plist and wipe injected env vars like `OPENCLAW_REPO`, API keys, and keyring passwords
-- OpenClaw 2026.4+ uses a writable live cron store at `~/.openclaw/cron/jobs.json`, so repo cron changes need to be re-seeded into that live file
-- This repo depends on a linked local plugin at `openclaw-plugins/transcribe-command/`, and `setup.sh` re-installs it after config/gateway changes
-- `setup.sh` also restores the daily restart LaunchAgent and preserves the current live model object when re-generating `~/.openclaw/openclaw.json`
-
-Verify the upgrade:
+## Checks and deployment
 
 ```bash
-openclaw --version
-openclaw plugins inspect transcribe-command
-openclaw cron list
-openclaw channels list
+python3 -m unittest discover -s tests
+node --test openclaw-plugins/sum-command/index.test.js tests/commands-integration.test.js
+bash -n scripts/setup.sh scripts/daily-restart.sh scripts/uninstall.sh
+git diff --check
 ```
 
-If `openclaw gateway status` looks flaky right after the upgrade, trust the process/log checks above first, then retry the status command after the restart settles.
+Tests mock external sends and model responses; real local FFmpeg checks cover
+audio segmentation. Run live provider smoke tests separately, with messaging and
+email disabled unless the specific delivery is authorized. Preserve failed raw
+responses and distinguish testing fees from production usage.
 
-## Troubleshooting
+Before restarting, verify no transcript helper is running. Restart only the
+gateway LaunchAgent, then check current WhatsApp connectivity and actual request
+logs. Do not reset authentication, recreate sessions, change billing, or use the
+daily restart's notification as a connectivity test.
 
-### WhatsApp creds restore loop (health check ALERT)
-
-If `python3 scripts/system-health-check.py` reports *WhatsApp creds.json restore loop in the last 2h*, the gateway is repeatedly fixing a broken session file — that is a **live** problem, not a stale log. The check exits **1** in that case; it exits **0** when there is no output.
-
-**Recovery (do in order):**
-
-1. **One gateway only** — `pgrep -fl "dist/index.js gateway"` should show a single main process. If you see duplicates, unload extras: `launchctl unload ~/Library/LaunchAgents/ai.openclaw.gateway.plist`, then `launchctl load …` once.
-2. **Re-pair WhatsApp** — `openclaw channels add --channel whatsapp` and complete QR / linking on the Mac (session must finish successfully).
-3. **Restart gateway** — `openclaw gateway restart` (or `bash scripts/setup.sh` if you also need plist env vars).
-4. **Re-check** — wait a few minutes, then run `python3 scripts/system-health-check.py` again. After restores stop, the rolling **2h** window will clear; you need fewer than 5 restore lines in that window for silence.
-
-Also ensure **disk space** is healthy and avoid putting `~/.openclaw/credentials` under iCloud/Desktop sync (can corrupt JSON mid-write).
-
-### Other
-
-- **`No pages available in the connected browser`** — managed Chrome has no tab yet; use `browser navigate` first (see `workspace/TOOLS.md`). The post-restart cron now leaves one shared `about:blank` tab open after the daily 4 AM gateway restart so later browser actions have a page to attach to.
-- **Cron updates not taking effect** — OpenClaw 2026.4+ keeps a writable live cron store at `~/.openclaw/cron/jobs.json` with runtime fields like `createdAtMs`, `updatedAtMs`, and job state. Re-run `bash scripts/setup.sh` to re-seed that live store from `config/cron/jobs.json`, then verify with `openclaw cron list` or apply direct runtime edits with `openclaw cron edit`.
-- **`/transcribe` underperforms on media URLs** — install `yt-dlp` and `ffmpeg` locally. The helper can work without them in simpler cases, but YouTube/extractor/media-conversion fallbacks are much stronger with both installed.
-- **`/transcribe` fails on missing Python modules** — re-run `bash scripts/setup.sh`; it now installs the required user-scoped Python helpers (`requests`, `beautifulsoup4`) for the Homebrew `python3` runtime.
-
-### API keys suddenly "not set" in cron reports
-
-Symptom examples:
-- `OpenAI: OPENAI_ADMIN_KEY not set`
-- `Vapi: VAPI_API_KEY not set`
-- morning brief shows missing `GOG_KEYRING_PASSWORD`
-
-Root cause is usually incomplete `.env` combined with a daemon reinstall/restart path (`openclaw doctor --fix` or setup), so LaunchAgent starts without those vars.
-
-Verify quickly:
-
-```bash
-rg '^(OPENAI_ADMIN_KEY|VAPI_API_KEY|GOG_KEYRING_PASSWORD)=' .env
-launchctl print gui/$(id -u)/ai.openclaw.gateway | rg 'OPENAI_ADMIN_KEY|VAPI_API_KEY|GOG_KEYRING_PASSWORD'
-```
-
-Fix:
-
-1. Add missing keys to `.env` (`OPENAI_ADMIN_KEY`, `VAPI_API_KEY`, `GOG_KEYRING_PASSWORD`).
-2. Re-run setup: `bash scripts/setup.sh`
-3. Re-check daemon env with `launchctl print ...`
-4. Test immediately: `openclaw cron run api-spend-check`
-
-`scripts/setup.sh` now attempts to recover these keys from an existing LaunchAgent plist when `.env` is incomplete and prints a warning if critical vars are still missing. It cannot recover keys that are absent from both `.env` and plist.
-
-### Runtime/config version mismatch ("written by newer OpenClaw")
-
-If logs show `Config was last written by a newer OpenClaw (...)`, your global CLI/runtime was downgraded relative to your config.
-
-Verify:
-
-```bash
-openclaw --version
-npm show openclaw version
-```
-
-Fix:
-
-```bash
-npm install -g openclaw@latest
-bash scripts/setup.sh
-openclaw gateway restart
-openclaw gateway status
-```
-
-### Clawd not responding (LiveSessionModelSwitchError)
-
-Symptom examples:
-- `Gateway agent failed; falling back to embedded: ... LiveSessionModelSwitchError`
-- cron jobs erroring after model changes with mixed provider/model traces
-
-This usually means stale live sessions are pinned to an old model while defaults changed.
-
-Fast recovery:
-
-```bash
-# 1. Reset main-agent session state — archives old sessions and starts fresh
-python3 scripts/reset-main-sessions.py
-
-# 2. Apply model object atomically (avoid partial primary/fallback updates)
-openclaw config set agents.defaults.model '{"primary":"openai/gpt-5.4-mini","fallbacks":["google/gemini-2.5-pro"]}' --strict-json
-
-# 3. Restart and verify
-openclaw gateway restart
-openclaw gateway status
-openclaw agent --agent main --message "Reply with OK only." --json
-```
-
-If sessions are not wiped, accumulated conversation history can exceed model context windows (especially gpt-5.4-mini at 391K), causing "input exceeds context window" errors every time.
-
-### AGENTS.md or TOOLS.md truncated (agent missing rules)
-
-The gateway bootstraps workspace files into agent context with a **12,000-character limit**. Files over the limit are silently truncated — the agent runs without the tail of its rules, which can cause it to hallucinate exec parameters, ignore cron behavior rules, or skip output-format guidelines.
-
-Symptom: log line `workspace bootstrap file AGENTS.md is NNNNN chars (limit 12000); truncating in injected context`.
-
-Fix: keep both files under 12,000 chars. Check sizes:
-
-```bash
-wc -c ~/.openclaw/workspace/AGENTS.md ~/.openclaw/workspace/TOOLS.md
-```
-
-If either exceeds ~11,800 chars, trim content before adding more (consolidate tables, shorten examples, move reference material to a separate workspace file).
-
-### Exec calls blocked in cron ("host not allowed" or "cannot wait for interactive approval")
-
-Symptom log lines:
-- `exec host not allowed (requested auto; configured host is gateway)`
-- `exec denied: Cron runs cannot wait for interactive exec approval. Effective host exec policy: security=allowlist ask=on-miss`
-
-Cause: the agent explicitly passed `host: "auto"`, `security: "allowlist"`, or `ask: "on-miss"` in the exec tool call, overriding the correct gateway defaults.
-
-The gateway is configured with `host: "gateway"`, `security: "full"`, `ask: "off"` (in both `openclaw.json` and `~/.openclaw/exec-approvals.json`). These defaults are correct. The agent should **never** override them — the rule is documented in `workspace/TOOLS.md` § Exec call rules. If you see this error repeatedly, check that AGENTS.md is not being truncated (see above), since the truncation can cause the agent to lose the rules that prevent this.
-
-### Cron jobs reporting "error" but messages delivered (false positive)
-
-Cron jobs that explicitly send WhatsApp via the agent's `message` tool may report a "Delivering to WhatsApp requires target" error in the cron status even though the actual message was delivered. This happens because the cron delivery layer also tries to send the agent's final response text, which fails in isolated sessions with no originating channel.
-
-Fix: Disable announce delivery for all cron jobs:
-
-```bash
-for job in $(openclaw cron list --json | python3 -c "import sys,json; [print(j['id']) for j in json.loads(sys.stdin.read())]"); do
-  openclaw cron edit "$job" --no-deliver
-done
-openclaw gateway restart
-```
-
-## Restoring Clawd
-
-> **Current status: ACTIVE** — restored 2026-04-18. This section is the checklist for future shutdowns.
-
-Complete checklist to bring the agent back online after a shutdown:
-
-1. **Add OpenAI credits** — [platform.openai.com/settings/billing](https://platform.openai.com/settings/billing)
-   Then restore the primary model in `config/openclaw.json.template`:
-   ```
-   primary: "openai/gpt-5.4-mini",
-   fallbacks: ["google/gemini-2.5-pro"],
-   ```
-
-2. **Add Yahoo email credentials** to `.env` (currently missing):
-   ```
-   YAHOO_USER=arsenin@yahoo.com
-   YAHOO_APP_PASSWORD=<yahoo-app-password>
-   ```
-
-3. **Run setup** to install LaunchAgents and start the gateway:
-   ```bash
-   bash scripts/setup.sh
-   ```
-
-4. **Re-pair WhatsApp** (session had 440 conflict at shutdown):
-   - On iPhone: WhatsApp → Settings → Linked Devices → log out all devices
-   - Then: `openclaw channels login --channel whatsapp`
-
-5. **Verify**: `openclaw gateway status` and check WhatsApp delivers a test message.
-
-See `SETUP_GUIDE.md` for the full detailed walkthrough.
-
-## Security
-
-- Gateway binds to `127.0.0.1` only (never exposed to the network)
-- Authentication token required for all gateway access (injected from `.env`, never committed)
-- Config uses a template system — `config/openclaw.json.template` has a placeholder; real token is injected at setup time
-- All secrets in `.env` (git-ignored, `chmod 600`)
-- Comprehensive action logging enabled
-- Agent requires user approval before irreversible actions (purchases, deletions, public posts)
-- Browser sessions always cleaned up (`browser close`) to prevent resource leaks
-- Ongoing tasks persisted to MEMORY.md with TTL (7-day default) and 48h staleness detection
-- Phone calls require explicit user approval before dialing (including whether Riley may leave a callback number on voicemail); Riley never commits to payments
-- Inbound calls answered by AI; messages relayed to owner via WhatsApp
-- See the Security Hardening section in [SETUP_GUIDE.md](SETUP_GUIDE.md) for the full checklist
+The October output-limit repair is documented in
+[the recovery notes](docs/sum-output-limit-recovery.md). Earlier audio-editing
+documents under `docs/` are historical and do not describe active commands.

@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# IgorOpenClaw — Uninstall Script
-# Removes symlinks and stops the daemon. Does NOT delete the repo or .env.
+# IgorOpenClaw - Uninstall Script
+# Removes generated local state and stops the daemon. Does NOT delete the repo or .env.
 # Run from the repo root: bash scripts/uninstall.sh
 
 OPENCLAW_DIR="$HOME/.openclaw"
@@ -16,6 +16,8 @@ DAILY_RESTART_PLIST="$HOME/Library/LaunchAgents/ai.openclaw.daily-restart.plist"
 if command -v openclaw &>/dev/null; then
     echo "Stopping OpenClaw gateway..."
     openclaw gateway stop 2>/dev/null || true
+    openclaw plugins uninstall sum-command --force 2>/dev/null || true
+    openclaw plugins uninstall transcribe-command --force 2>/dev/null || true
 fi
 if [ -f "$PLIST" ]; then
     launchctl unload "$PLIST" 2>/dev/null || true
@@ -28,14 +30,21 @@ if [ -f "$DAILY_RESTART_PLIST" ]; then
     echo "Removed LaunchAgent: $DAILY_RESTART_PLIST"
 fi
 
-# --- Remove workspace symlink / generated cron store ---
+# --- Remove runtime workspace / generated cron store ---
 if [ -L "$OPENCLAW_DIR/workspace" ]; then
     rm "$OPENCLAW_DIR/workspace"
-    echo "Removed symlink: $OPENCLAW_DIR/workspace"
+    echo "Removed workspace symlink: $OPENCLAW_DIR/workspace"
+elif [ -d "$OPENCLAW_DIR/workspace" ]; then
+    rm -rf "$OPENCLAW_DIR/workspace"
+    echo "Removed runtime workspace: $OPENCLAW_DIR/workspace"
 fi
 if [ -e "$OPENCLAW_DIR/cron/jobs.json" ]; then
     rm -f "$OPENCLAW_DIR/cron/jobs.json"
     echo "Removed live cron store: $OPENCLAW_DIR/cron/jobs.json"
+fi
+if [ -e "$OPENCLAW_DIR/scripts/daily-restart.sh" ]; then
+    rm -f "$OPENCLAW_DIR/scripts/daily-restart.sh"
+    echo "Removed copied restart script: $OPENCLAW_DIR/scripts/daily-restart.sh"
 fi
 
 # --- Remove generated config (created by setup.sh cp, not a symlink) ---

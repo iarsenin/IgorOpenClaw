@@ -2,7 +2,6 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
 import sum, { runHelper } from "../openclaw-plugins/sum-command/index.js";
-import shrink, { handle } from "../openclaw-plugins/shrink-command/index.js";
 
 function register(plugin) {
     const hooks = new Map(), commands = new Map();
@@ -11,19 +10,12 @@ function register(plugin) {
     return { hooks, commands };
 }
 
-test("both registration orders preserve /sum, /shrink and missing-URL handling", async () => {
-    for (const order of [[sum, shrink], [shrink, sum]]) {
-        const entries = order.map(register);
-        const commands = entries.flatMap(x => [...x.commands.keys()]).sort();
-        assert.deepEqual(commands, ["shrink", "sum"]);
+test("only /sum is registered, with group and missing-URL checks intact", async () => {
+        assert.deepEqual([...register(sum).commands.keys()], ["sum"]);
         const sumHook = register(sum).hooks.get("before_dispatch");
-        const shrinkHook = register(shrink).hooks.get("before_dispatch");
-        assert.equal(await shrinkHook({ body: "/sum https://example.com", from: "+15551234567" }), undefined);
-        assert.equal(await sumHook({ body: "/shrink https://example.com", from: "+15551234567" }), undefined);
         assert.deepEqual(await sumHook({ body: "/sum", isGroup: false }), { handled: true, text: "Usage: /sum <URL>" });
         assert.match((await sumHook({ body: "/sum https://example.com", isGroup: true })).text, /direct chat/);
         assert.match((await register(sum).commands.get("sum").handler({ args: "" })).text, /Usage: \/sum/);
-    }
 });
 
 test("/sum still invokes transcript+email helper, never original-audio worker", async () => {
@@ -48,9 +40,11 @@ test("/sum still invokes transcript+email helper, never original-audio worker", 
     assert.doesNotMatch(captured.args.join(" "), /shrink_original/);
 });
 
-test("/shrink enqueue failure cannot consume or modify /sum", async () => {
-    const result = await handle({ body: "/shrink https://example.com", from: "+15551234567" }, async () => { throw new Error("queue full"); });
-    assert.match(result.text, /queue full/);
-    assert.equal(await handle({ body: "/sum https://example.com", from: "+15551234567" }), undefined);
-    assert.equal(register(sum).commands.has("sum"), true);
+test("retired /shrink and unknown commands are handled by /sum usage, never fall through", async () => {
+    const hook = register(sum).hooks.get("before_dispatch");
+    for (const body of ["/shrink https://example.com", "/shrink status", "/other", "hello"]) {
+        assert.deepEqual(await hook({ body, isGroup: false }), {
+            handled: true, text: "Use /sum <URL> for a transcript and summary.",
+        });
+    }
 });
